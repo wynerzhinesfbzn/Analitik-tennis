@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 /* ── TYPES ── */
-interface AgentMessage { agent: string; agentLabel: string; content: string; isReply?: boolean; }
+interface AgentMessage { agent: string; agentLabel: string; content: string; isReply?: boolean; provider?: string; }
 interface BettingRecommendation { type: string; description: string; odds: number; bankPercent: number; confidencePercent: number; }
 interface UploadedImage { file: File; preview: string; base64: string; }
 type AnalysisPhase = "idle" | "research" | "dialogue" | "recommendations" | "done";
@@ -304,10 +304,16 @@ export default function AnalysisPage() {
             }
             else if (event.type === "agent_start") {
               if (localCurrentMsg) setDialogue(prev => [...prev, localCurrentMsg!]);
-              localCurrentMsg = { agent: event.agent, agentLabel: event.agentLabel, content: "", isReply: event.isReply };
+              localCurrentMsg = { agent: event.agent, agentLabel: event.agentLabel, content: "", isReply: event.isReply, provider: event.provider };
               setCurrentMsg({ ...localCurrentMsg });
             } else if (event.type === "agent_chunk") {
-              if (localCurrentMsg) { const updated: AgentMessage = { ...localCurrentMsg, content: localCurrentMsg.content + (event.content as string) }; localCurrentMsg = updated; setCurrentMsg({ ...updated }); }
+              if (localCurrentMsg) {
+                const updated: AgentMessage = { ...localCurrentMsg, content: localCurrentMsg.content + (event.content as string) };
+                localCurrentMsg = updated;
+                setCurrentMsg({ ...updated });
+                // Yield to browser so React renders each chunk visually
+                await new Promise<void>(r => setTimeout(r, 0));
+              }
             } else if (event.type === "agent_done") {
               if (localCurrentMsg) { setDialogue(prev => [...prev, { ...localCurrentMsg!, content: event.fullContent }]); localCurrentMsg = null; setCurrentMsg(null); }
             } else if (event.type === "generating_recommendations") { setPhase("recommendations"); }
@@ -862,8 +868,13 @@ export default function AnalysisPage() {
                         {/* Bubble */}
                         <div className="flex-1 min-w-0 max-w-[88%]">
                           {showHeader && (
-                            <div className="flex items-center gap-2 mb-1.5">
+                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                               <span className={`text-xs font-bold ${nameCls}`}>{msg.agentLabel || meta.label}</span>
+                              {msg.provider && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted/60 text-muted-foreground border border-border/50 font-mono">
+                                  {msg.provider}
+                                </span>
+                              )}
                               {msg.isReply && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
                                   ↩ отвечает
