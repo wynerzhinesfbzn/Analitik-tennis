@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, History, Sun, Moon, TrendingUp, Zap } from "lucide-react";
+import { Activity, History, Sun, Moon, Github, Zap } from "lucide-react";
 import { ReactNode, useEffect, useState } from "react";
 
 function LiveClock() {
@@ -43,6 +43,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const navItems = [
     { href: "/", label: "Анализ", icon: Activity },
     { href: "/history", label: "История", icon: History },
+    { href: "/git-push", label: "GitHub", icon: TrendingUp },
   ];
 
   return (
