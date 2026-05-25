@@ -733,46 +733,142 @@ export default function AnalysisPage() {
                 </div>
               )}
 
-              {/* Agent terminal */}
+              {/* Agent chat */}
               <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-white/5 flex items-center justify-center">
-                    <Layers className="w-3.5 h-3.5 text-muted-foreground" />
+                {/* Chat header */}
+                <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-gradient-to-r from-card to-muted/30">
+                  <div className="flex items-center -space-x-2">
+                    <div className="w-7 h-7 rounded-full bg-blue-500 border-2 border-card flex items-center justify-center text-white text-xs z-30">📊</div>
+                    <div className="w-7 h-7 rounded-full bg-amber-500 border-2 border-card flex items-center justify-center text-white text-xs z-20">💹</div>
+                    <div className="w-7 h-7 rounded-full bg-purple-500 border-2 border-card flex items-center justify-center text-white text-xs z-10">🧠</div>
                   </div>
-                  <span className="text-sm font-semibold">AI Диалог</span>
+                  <div>
+                    <div className="text-sm font-bold">Совещание агентов</div>
+                    <div className="text-[10px] text-muted-foreground">Статистик · Стратег · Контекст</div>
+                  </div>
                   {usedWebSearch && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 font-medium ml-1">🌐 Веб-поиск</span>
+                    <span className="text-[10px] px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200 dark:border-blue-500/20 ml-1">🌐 Веб-поиск</span>
+                  )}
+                  {phase === "dialogue" && currentMsg && (
+                    <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="flex gap-0.5">
+                        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-primary/60 inline-block" />
+                        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-primary/60 inline-block" />
+                        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-primary/60 inline-block" />
+                      </span>
+                      пишет...
+                    </div>
                   )}
                   {phase === "research" && (
-                    <span className="ml-auto text-xs text-muted-foreground animate-pulse">{researchMsg || "Поиск данных..."}</span>
+                    <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
+                      <Search className="w-3 h-3" />
+                      {researchMsg || "Ищу данные..."}
+                    </div>
                   )}
                 </div>
 
-                <div ref={terminalRef} className="h-[420px] overflow-y-auto p-4 space-y-3 bg-slate-50 dark:bg-black/20">
-                  {dialogue.length === 0 && !currentMsg && (
-                    <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground/40">
-                      <div className="text-5xl">🎾</div>
-                      <div className="text-sm font-medium">Введите матч и нажмите «Анализировать»</div>
-                      <div className="flex gap-3 text-xs">
-                        <span className="px-2 py-1 rounded-lg bg-muted">📊 Статистик</span>
-                        <span className="px-2 py-1 rounded-lg bg-muted">💹 Стратег</span>
-                        <span className="px-2 py-1 rounded-lg bg-muted">🧠 Контекст</span>
+                {/* Chat body */}
+                <div
+                  ref={terminalRef}
+                  className="h-[480px] overflow-y-auto px-4 py-4 space-y-1"
+                  style={{ background: "var(--chat-bg, transparent)" }}
+                >
+                  {/* Empty state */}
+                  {dialogue.length === 0 && !currentMsg && phase !== "research" && (
+                    <div className="h-full flex flex-col items-center justify-center gap-4 select-none">
+                      <div className="text-6xl">🎾</div>
+                      <div className="text-center space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Три эксперта готовы к анализу</p>
+                        <p className="text-xs text-muted-foreground/50">Введите матч и нажмите «Анализировать»</p>
+                      </div>
+                      <div className="flex gap-2">
+                        {[
+                          { icon: "📊", name: "Статистик", color: "border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/5 text-blue-700 dark:text-blue-300" },
+                          { icon: "💹", name: "Стратег",   color: "border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/5 text-amber-700 dark:text-amber-300" },
+                          { icon: "🧠", name: "Контекст",  color: "border-purple-200 dark:border-purple-500/30 bg-purple-50 dark:bg-purple-500/5 text-purple-700 dark:text-purple-300" },
+                        ].map(a => (
+                          <div key={a.name} className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${a.color}`}>
+                            <span>{a.icon}</span>{a.name}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
 
+                  {/* Research phase placeholder */}
+                  {dialogue.length === 0 && !currentMsg && phase === "research" && (
+                    <div className="h-full flex flex-col items-center justify-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+                        <Search className="w-6 h-6 text-primary animate-pulse" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-semibold">Сбор данных</p>
+                        <p className="text-xs text-muted-foreground mt-1">{researchMsg || "Ищу актуальную информацию..."}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Messages */}
                   {[...dialogue, ...(currentMsg ? [currentMsg] : [])].map((msg, idx) => {
-                    const meta = AGENT_META[msg.agent] ?? { label: msg.agentLabel, color: "text-foreground", bg: "bg-muted", dot: "bg-gray-400", icon: "🤖" };
-                    const isLast = idx === dialogue.length + (currentMsg ? 0 : -1);
+                    const agentKey = msg.agent as keyof typeof AGENT_META;
+                    const meta = AGENT_META[agentKey] ?? { label: msg.agentLabel, color: "text-foreground", bg: "bg-muted", dot: "bg-gray-400", icon: "🤖" };
+
+                    const isStreaming = currentMsg !== null && idx === dialogue.length;
+
+                    /* Bubble style per agent */
+                    const bubbleStyles: Record<string, string> = {
+                      stats_expert:    "bg-blue-50 dark:bg-blue-950/40 border border-blue-200/70 dark:border-blue-500/20 rounded-tl-sm",
+                      odds_strategist: "bg-amber-50 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-500/20 rounded-tl-sm",
+                      context_expert:  "bg-purple-50 dark:bg-purple-950/40 border border-purple-200/70 dark:border-purple-500/20 rounded-tl-sm",
+                    };
+                    const avatarStyles: Record<string, string> = {
+                      stats_expert:    "bg-blue-500",
+                      odds_strategist: "bg-amber-500",
+                      context_expert:  "bg-purple-500",
+                    };
+                    const nameStyles: Record<string, string> = {
+                      stats_expert:    "text-blue-600 dark:text-blue-400",
+                      odds_strategist: "text-amber-600 dark:text-amber-400",
+                      context_expert:  "text-purple-600 dark:text-purple-400",
+                    };
+
+                    const bubbleCls = bubbleStyles[msg.agent] ?? "bg-muted border border-border rounded-tl-sm";
+                    const avatarCls = avatarStyles[msg.agent] ?? "bg-gray-500";
+                    const nameCls   = nameStyles[msg.agent] ?? "text-foreground";
+
+                    /* Show avatar only if previous message was from a different agent */
+                    const prevMsg = idx > 0 ? [...dialogue, ...(currentMsg ? [currentMsg] : [])][idx - 1] : null;
+                    const showHeader = !prevMsg || prevMsg.agent !== msg.agent;
+
                     return (
-                      <div key={idx} className={`rounded-xl p-3 border border-border ${meta.bg} msg-appear`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-base leading-none">{meta.icon}</span>
-                          <span className={`text-xs font-bold ${meta.color}`}>{msg.agentLabel || meta.label}</span>
-                          {msg.isReply && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">↩ ответ</span>}
-                          {isLast && currentMsg && <span className={`ml-auto w-2 h-2 rounded-full ${meta.dot} animate-pulse`} />}
+                      <div key={idx} className={`flex gap-3 msg-appear ${showHeader ? "mt-4" : "mt-1"}`}>
+                        {/* Avatar */}
+                        <div className="flex-none w-8">
+                          {showHeader && (
+                            <div className={`w-8 h-8 rounded-full ${avatarCls} flex items-center justify-center text-sm shadow-sm`}>
+                              {meta.icon}
+                            </div>
+                          )}
                         </div>
-                        <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+
+                        {/* Bubble */}
+                        <div className="flex-1 min-w-0 max-w-[88%]">
+                          {showHeader && (
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className={`text-xs font-bold ${nameCls}`}>{msg.agentLabel || meta.label}</span>
+                              {msg.isReply && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+                                  ↩ отвечает
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          <div className={`rounded-2xl px-4 py-3 ${bubbleCls}`}>
+                            <p className={`text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap ${isStreaming ? "typing-cursor" : ""}`}>
+                              {msg.content}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
