@@ -172,9 +172,13 @@ export default function AnalysisPage() {
       const res = await fetch("/api/predictions/analyze-images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images: images.map(i => i.base64) }),
+        body: JSON.stringify({
+          images: images.map(i => i.base64),
+          mode: mode === "express" ? "express" : "single",
+        }),
       });
       const data = await res.json();
+
       if (mode === "single") {
         if (data.player1) setPlayer1(data.player1);
         if (data.player2) setPlayer2(data.player2);
@@ -182,24 +186,28 @@ export default function AnalysisPage() {
         if (data.surface) setSurface(data.surface);
         if (data.matchDate) setMatchDate(data.matchDate);
         if (data.odds) setOddsData(data.odds);
+        toast({ title: `✅ ${images.length} скриншот(ов) распознано` });
       } else if (mode === "express") {
-        const matches: Array<{ player1?: string; player2?: string; tournament?: string; surface?: string; matchDate?: string }> =
-          Array.isArray(data.matches) ? data.matches : [data];
-        setSlots(prev => {
-          const next = [...prev];
-          matches.forEach((m, i) => {
-            if (i < next.length) {
-              if (m.player1) next[i] = { ...next[i], player1: m.player1 };
-              if (m.player2) next[i] = { ...next[i], player2: m.player2 };
-              if (m.tournament) next[i] = { ...next[i], tournament: m.tournament };
-              if (m.surface) next[i] = { ...next[i], surface: m.surface };
-              if (m.matchDate) next[i] = { ...next[i], matchDate: m.matchDate };
-            }
-          });
-          return next;
-        });
+        type M = { player1?: string; player2?: string; tournament?: string | null; surface?: string | null; matchDate?: string | null };
+        const matches: M[] = Array.isArray(data.matches) && data.matches.length > 0
+          ? data.matches
+          : [data]; // fallback to single match
+
+        // Replace ALL slots with exactly the detected matches
+        const newSlots: MatchSlot[] = matches.map((m) => ({
+          ...mkSlot(),
+          player1: m.player1 ?? "",
+          player2: m.player2 ?? "",
+          tournament: m.tournament ?? "",
+          surface: m.surface ?? "",
+          matchDate: m.matchDate ?? "",
+          lookupDone: Boolean(m.player1 && m.player2),
+        }));
+
+        setSlots(newSlots);
+        setExpressResults([]);
+        toast({ title: `✅ Найдено ${newSlots.length} матч${newSlots.length === 1 ? "" : newSlots.length < 5 ? "а" : "ей"} — слоты обновлены` });
       }
-      toast({ title: `✅ ${images.length} скриншот(ов) распознано` });
     } catch {
       toast({ title: "Ошибка анализа скриншотов", variant: "destructive" });
     } finally {
@@ -964,7 +972,7 @@ export default function AnalysisPage() {
                   <Zap className="w-4 h-4" /> Режим Экспресс
                 </div>
                 <p className="text-sm text-orange-600/70 dark:text-orange-400/70 mt-0.5">
-                  Добавьте от 2 до 20 матчей — AI проанализирует каждый и соберёт экспресс
+                  Загрузите скриншот(ы) — AI найдёт все матчи и создаст нужное количество слотов
                 </p>
               </div>
               {expressResults.length > 0 && !expressRunning && (
@@ -989,8 +997,8 @@ export default function AnalysisPage() {
               className="rounded-2xl border-2 border-dashed border-border hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/5 transition-all p-5 text-center cursor-pointer"
             >
               <Upload className="w-6 h-6 mx-auto mb-2 text-muted-foreground/40" />
-              <p className="text-sm font-medium text-muted-foreground">Загрузите скриншоты со всеми матчами экспресса</p>
-              <p className="text-xs text-muted-foreground/50 mt-1">AI распознает все матчи и заполнит поля автоматически</p>
+              <p className="text-sm font-medium text-muted-foreground">Загрузите скриншоты с матчами</p>
+              <p className="text-xs text-muted-foreground/50 mt-1">Сколько матчей на скриншотах — столько слотов и создастся</p>
             </div>
             <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileInput} />
             {images.length > 0 && (
@@ -1032,12 +1040,10 @@ export default function AnalysisPage() {
                         {isCurrent && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />}
                         {result?.done && !result.error && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
                       </div>
-                      {slots.length > 2 && (
-                        <button onClick={() => setSlots(prev => prev.filter(s => s.id !== slot.id))}
-                          className="w-6 h-6 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <button onClick={() => setSlots(prev => prev.filter(s => s.id !== slot.id))}
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                     <div className="p-3 space-y-2">
                       <Input

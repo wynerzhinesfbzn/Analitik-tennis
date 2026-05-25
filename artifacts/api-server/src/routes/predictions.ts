@@ -92,16 +92,91 @@ router.post("/predictions/analyze", async (req, res): Promise<void> => {
   }
 });
 
-// POST /predictions/analyze-images — multi-image OCR (array of base64)
+// POST /predictions/analyze-images — multi-image OCR
+// mode "single" (default) → merged single match + odds
+// mode "express"           → array of ALL matches found across all images
 router.post("/predictions/analyze-images", async (req, res): Promise<void> => {
   const images: string[] = Array.isArray(req.body?.images) ? req.body.images : [];
+  const mode: string = req.body?.mode === "express" ? "express" : "single";
+
   if (images.length === 0) {
     res.status(400).json({ error: "Нет изображений" });
     return;
   }
 
   try {
-    // Process all images in parallel
+    if (mode === "express") {
+      // For each image, extract ALL matches it contains (one bookmaker screen may show many)
+      const perImageMatches = await Promise.all(images.map(async (imageBase64, idx) => {
+        const response = await openai.chat.completions.create({
+          model: "gpt-5.4",
+          max_completion_tokens: 3000,
+          messages: [
+            {
+              role: "system",
+              content: `Ты — эксперт по анализу скриншотов букмекерских линий.
+На скриншоте может быть НЕСКОЛЬКО теннисных матчей (купон экспресса, линия событий и т.п.).
+Найди ВСЕ матчи и верни JSON-массив:
+[
+  {
+    "player1": string,
+    "player2": string,
+    "tournament": string | null,
+    "surface": "Хард" | "Грунт" | "Трава" | "Крытый" | null,
+    "matchDate": "YYYY-MM-DD" | null,
+    "odds": object | null
+  },
+  ...
+]
+Если матч только один — верни массив из одного элемента.
+Верни ТОЛЬКО JSON-массив, без пояснений и markdown.`,
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: { url: `data:image/jpeg;base64,${imageBase64}` },
+                },
+                {
+                  type: "text",
+                  text: `Скриншот #${idx + 1}: найди ВСЕ теннисные матчи и верни массив.`,
+                },
+              ],
+            },
+          ],
+        });
+
+        const text = response.choices[0]?.message?.content ?? "[]";
+        const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+        try {
+          const parsed = JSON.parse(cleaned);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [];
+        }
+      }));
+
+      // Flatten all matches, remove duplicates by player names
+      type MatchEntry = { player1: string; player2: string; tournament?: string | null; surface?: string | null; matchDate?: string | null; odds?: unknown };
+      const allMatches: MatchEntry[] = (perImageMatches.flat() as MatchEntry[]).filter(
+        (m): m is MatchEntry => Boolean(m?.player1 && m?.player2)
+      );
+
+      // Deduplicate: same pair of players (case-insensitive)
+      const seen = new Set<string>();
+      const unique = allMatches.filter(m => {
+        const key = `${m.player1.toLowerCase()}__${m.player2.toLowerCase()}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      res.json({ matches: unique, total: unique.length });
+      return;
+    }
+
+    // ── SINGLE mode: original logic ──
     const results = await Promise.all(images.map(async (imageBase64, idx) => {
       const response = await openai.chat.completions.create({
         model: "gpt-5.4",
@@ -143,8 +218,6 @@ router.post("/predictions/analyze-images", async (req, res): Promise<void> => {
       try { return JSON.parse(cleaned); } catch { return { rawText: text }; }
     }));
 
-    // Merge: take first non-null value for player names/tournament/surface/date
-    // Merge all odds together
     const merged: Record<string, unknown> = {};
     const allOdds: Record<string, unknown> = {};
 
