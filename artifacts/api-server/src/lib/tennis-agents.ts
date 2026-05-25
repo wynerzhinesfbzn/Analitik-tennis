@@ -220,8 +220,8 @@ async function callGemini(systemPrompt: string, userPrompt: string, send: SSESen
 // ── Anthropic streaming ───────────────────────────────────────────────────────
 async function callClaude(systemPrompt: string, userPrompt: string, send: SSESendFn, agentKey: string): Promise<string> {
   const stream = anthropic.messages.stream({
-    model: "claude-opus-4-7",
-    max_tokens: 8192,
+    model: "claude-sonnet-4-5",
+    max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
   });
