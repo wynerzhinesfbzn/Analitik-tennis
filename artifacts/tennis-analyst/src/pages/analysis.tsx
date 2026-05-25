@@ -1,18 +1,17 @@
 import { Layout } from "@/components/layout";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
 import {
   Play, Upload, X, Headphones, Loader2,
-  TrendingUp, AlertTriangle, CheckCircle2,
-  Search, Database, Wifi,
+  TrendingUp, TrendingDown, AlertTriangle, Search, Database,
+  Wifi, Target, ShieldAlert, Percent, ChevronRight,
+  CircleDot, Zap, DollarSign, BarChart3, Clock, StopCircle,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 
 interface AgentMessage {
   agent: string;
@@ -20,7 +19,6 @@ interface AgentMessage {
   content: string;
   isReply?: boolean;
 }
-
 interface BettingRecommendation {
   type: string;
   description: string;
@@ -28,35 +26,41 @@ interface BettingRecommendation {
   bankPercent: number;
   confidencePercent: number;
 }
-
 interface UploadedImage {
   file: File;
   preview: string;
   base64: string;
 }
+type AnalysisPhase = "idle" | "research" | "dialogue" | "recommendations" | "done";
 
-type AnalysisPhase =
-  | "idle"
-  | "research"
-  | "dialogue"
-  | "recommendations"
-  | "done";
-
-const AGENT_META: Record<string, { emoji: string; color: string; borderColor: string; provider: string; providerColor: string }> = {
-  stats_expert:    { emoji: "📊", color: "text-sky-400",    borderColor: "border-sky-400/30",    provider: "Google Gemini",   providerColor: "text-sky-500/60" },
-  odds_strategist: { emoji: "💰", color: "text-yellow-400", borderColor: "border-yellow-400/30", provider: "Anthropic Claude", providerColor: "text-orange-400/60" },
-  context_expert:  { emoji: "🧠", color: "text-purple-400", borderColor: "border-purple-400/30", provider: "OpenAI GPT",       providerColor: "text-green-500/60" },
+const AGENT_META: Record<string, {
+  label: string; color: string; bg: string; border: string;
+  provider: string; providerBadge: string; icon: string;
+}> = {
+  stats_expert:    { label: "Статистик",    color: "text-cyan-300",   bg: "bg-cyan-500/5",   border: "border-cyan-500/20",   provider: "Gemini",   providerBadge: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",   icon: "📊" },
+  odds_strategist: { label: "Одс-стратег",  color: "text-amber-300",  bg: "bg-amber-500/5",  border: "border-amber-500/20",  provider: "Claude",   providerBadge: "bg-amber-500/10 text-amber-400 border-amber-500/30",   icon: "💹" },
+  context_expert:  { label: "Контекст",     color: "text-violet-300", bg: "bg-violet-500/5", border: "border-violet-500/20", provider: "GPT",      providerBadge: "bg-violet-500/10 text-violet-400 border-violet-500/30", icon: "🧠" },
 };
 
-function confidenceColor(pct: number) {
-  if (pct >= 88) return "text-emerald-400";
-  if (pct >= 78) return "text-yellow-400";
-  return "text-orange-400";
+function ConfBar({ pct }: { pct: number }) {
+  const color = pct >= 88 ? "bg-emerald-500" : pct >= 78 ? "bg-amber-500" : "bg-orange-500";
+  const text  = pct >= 88 ? "text-emerald-400" : pct >= 78 ? "text-amber-400" : "text-orange-400";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className={`text-xs font-bold font-mono tabular-nums ${text}`}>{pct}%</span>
+    </div>
+  );
 }
-function confidenceBg(pct: number) {
-  if (pct >= 88) return "bg-emerald-500/10 border-emerald-500/30";
-  if (pct >= 78) return "bg-yellow-500/10 border-yellow-500/30";
-  return "bg-orange-500/10 border-orange-500/30";
+
+function OddsChip({ value }: { value: number }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 font-mono text-sm font-bold text-amber-300 odds-value">
+      {value.toFixed(2)}
+    </span>
+  );
 }
 
 export default function AnalysisPage() {
@@ -75,15 +79,9 @@ export default function AnalysisPage() {
 
   const [phase, setPhase] = useState<AnalysisPhase>("idle");
   const [researchMsg, setResearchMsg] = useState("");
-  const [researchContext, setResearchContext] = useState("");
   const [usedWebSearch, setUsedWebSearch] = useState(false);
   const [detectedMatch, setDetectedMatch] = useState<{
-    tournament?: string;
-    surface?: string;
-    date?: string;
-    round?: string;
-    location?: string;
-    conditions?: string;
+    tournament?: string; surface?: string; date?: string; round?: string; location?: string; conditions?: string;
   } | null>(null);
   const [dialogue, setDialogue] = useState<AgentMessage[]>([]);
   const [currentMsg, setCurrentMsg] = useState<AgentMessage | null>(null);
@@ -97,11 +95,8 @@ export default function AnalysisPage() {
   const [podcastUrl, setPodcastUrl] = useState<string | null>(null);
 
   const terminalRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
-    }
+    if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
   }, [dialogue, currentMsg, researchMsg]);
 
   const readFileAsBase64 = (file: File): Promise<{ base64: string; preview: string }> =>
@@ -129,7 +124,6 @@ export default function AnalysisPage() {
     await addImages(Array.from(e.target.files ?? []));
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
-
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     await addImages(Array.from(e.dataTransfer.files));
@@ -164,18 +158,9 @@ export default function AnalysisPage() {
       toast({ title: "Введите имена обоих игроков", variant: "destructive" });
       return;
     }
-    setDialogue([]);
-    setCurrentMsg(null);
-    setRecommendations([]);
-    setVote(null);
-    setSavedPredictionId(null);
-    setRiskNotes("");
-    setCashoutAdvice("");
-    setPodcastUrl(null);
-    setResearchMsg("");
-    setResearchContext("");
-    setUsedWebSearch(false);
-    setDetectedMatch(null);
+    setDialogue([]); setCurrentMsg(null); setRecommendations([]); setVote(null);
+    setSavedPredictionId(null); setRiskNotes(""); setCashoutAdvice(""); setPodcastUrl(null);
+    setResearchMsg(""); setUsedWebSearch(false); setDetectedMatch(null);
     setPhase("research");
 
     try {
@@ -184,7 +169,6 @@ export default function AnalysisPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ player1, player2, tournament, surface, matchDate, odds: oddsData }),
       });
-
       if (!res.body) throw new Error("No stream");
 
       const reader = res.body.getReader();
@@ -195,7 +179,6 @@ export default function AnalysisPage() {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
         const parts = buffer.split("\n\n");
         buffer = parts.pop() ?? "";
@@ -204,62 +187,24 @@ export default function AnalysisPage() {
           if (!part.startsWith("data: ")) continue;
           try {
             const event = JSON.parse(part.slice(6));
-
-            if (event.type === "research_start") {
-              setPhase("research");
-            } else if (event.type === "research_progress") {
-              setResearchMsg(event.message ?? "");
-            } else if (event.type === "match_detected") {
-              setDetectedMatch({
-                tournament: event.tournament,
-                surface: event.surface,
-                date: event.date,
-                round: event.round,
-                location: event.location,
-                conditions: event.conditions,
-              });
-            } else if (event.type === "research_done") {
-              // brief pause before dialogue
-            } else if (event.type === "research_complete") {
-              setUsedWebSearch(event.usedWebSearch ?? false);
-              setResearchContext(event.context ?? "");
-              setPhase("dialogue");
-            } else if (event.type === "agent_start") {
-              if (localCurrentMsg) {
-                setDialogue(prev => [...prev, localCurrentMsg!]);
-              }
-              localCurrentMsg = {
-                agent: event.agent,
-                agentLabel: event.agentLabel,
-                content: "",
-                isReply: event.isReply,
-              };
+            if (event.type === "research_start") { setPhase("research"); }
+            else if (event.type === "research_progress") { setResearchMsg(event.message ?? ""); }
+            else if (event.type === "match_detected") { setDetectedMatch({ tournament: event.tournament, surface: event.surface, date: event.date, round: event.round, location: event.location, conditions: event.conditions }); }
+            else if (event.type === "research_complete") { setUsedWebSearch(event.usedWebSearch ?? false); setPhase("dialogue"); }
+            else if (event.type === "agent_start") {
+              if (localCurrentMsg) setDialogue(prev => [...prev, localCurrentMsg!]);
+              localCurrentMsg = { agent: event.agent, agentLabel: event.agentLabel, content: "", isReply: event.isReply };
               setCurrentMsg({ ...localCurrentMsg });
             } else if (event.type === "agent_chunk") {
-              if (localCurrentMsg) {
-                localCurrentMsg = { ...localCurrentMsg, content: localCurrentMsg.content + event.content };
-                setCurrentMsg({ ...localCurrentMsg });
-              }
+              if (localCurrentMsg) { localCurrentMsg = { ...localCurrentMsg, content: localCurrentMsg.content + event.content }; setCurrentMsg({ ...localCurrentMsg }); }
             } else if (event.type === "agent_done") {
-              if (localCurrentMsg) {
-                setDialogue(prev => [...prev, { ...localCurrentMsg!, content: event.fullContent }]);
-                localCurrentMsg = null;
-                setCurrentMsg(null);
-              }
-            } else if (event.type === "generating_recommendations") {
-              setPhase("recommendations");
-            } else if (event.type === "recommendations") {
-              setRecommendations(event.data);
-            } else if (event.type === "vote") {
-              setVote({ verdict: event.vote, avgConfidence: event.avgConfidence });
-            } else if (event.type === "saved") {
-              setSavedPredictionId(event.prediction?.id ?? null);
-              setRiskNotes(event.prediction?.riskNotes ?? "");
-              setCashoutAdvice(event.prediction?.cashoutAdvice ?? "");
-            } else if (event.done) {
-              setPhase("done");
-            }
-          } catch { /* skip parse errors */ }
+              if (localCurrentMsg) { setDialogue(prev => [...prev, { ...localCurrentMsg!, content: event.fullContent }]); localCurrentMsg = null; setCurrentMsg(null); }
+            } else if (event.type === "generating_recommendations") { setPhase("recommendations"); }
+            else if (event.type === "recommendations") { setRecommendations(event.data); }
+            else if (event.type === "vote") { setVote({ verdict: event.vote, avgConfidence: event.avgConfidence }); }
+            else if (event.type === "saved") { setSavedPredictionId(event.prediction?.id ?? null); setRiskNotes(event.prediction?.riskNotes ?? ""); setCashoutAdvice(event.prediction?.cashoutAdvice ?? ""); }
+            else if (event.done) { setPhase("done"); }
+          } catch { /* skip */ }
         }
       }
     } catch {
@@ -275,8 +220,7 @@ export default function AnalysisPage() {
     try {
       const res = await fetch(`/api/predictions/${savedPredictionId}/podcast`, { method: "POST" });
       if (!res.ok) throw new Error("Failed");
-      const url = URL.createObjectURL(await res.blob());
-      setPodcastUrl(url);
+      setPodcastUrl(URL.createObjectURL(await res.blob()));
     } catch {
       toast({ title: "Ошибка генерации подкаста", variant: "destructive" });
     } finally {
@@ -288,374 +232,391 @@ export default function AnalysisPage() {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto flex flex-col gap-5">
+      <div className="max-w-[1400px] mx-auto space-y-4">
 
-        {/* ── TOP ROW ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* ── PAGE TITLE ROW ── */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-cyan-400" />
+              <h1 className="text-sm font-bold uppercase tracking-[0.15em] text-foreground">Аналитика матча</h1>
+            </div>
+            <span className="text-[10px] text-muted-foreground uppercase tracking-widest border-l border-border pl-3">
+              3 AI агента · Real-time
+            </span>
+          </div>
+          {phase === "done" && vote && (
+            <div className={`flex items-center gap-2 px-3 py-1 rounded border text-xs font-bold uppercase tracking-wider ${vote.verdict === "unanimous" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-amber-500/10 border-amber-500/30 text-amber-400"}`}>
+              {vote.verdict === "unanimous" ? <Target className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+              {vote.verdict === "unanimous" ? "Консенсус" : "Спорный"} · {vote.avgConfidence}%
+            </div>
+          )}
+        </div>
 
-          {/* LEFT: Screenshots + Form */}
-          <div className="lg:col-span-4 flex flex-col gap-4">
+        {/* ── MAIN GRID ── */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+
+          {/* ═══ LEFT PANEL ═══ */}
+          <div className="xl:col-span-4 space-y-4">
 
             {/* Screenshot drop zone */}
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-3 border-b border-border">
-                <CardTitle className="uppercase tracking-wider text-xs text-muted-foreground">
-                  Скриншоты букмекера
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-3">
+            <div className="rounded border border-border bg-card overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-border flex items-center justify-between bg-white/[0.02]">
+                <div className="flex items-center gap-2">
+                  <Upload className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Скриншоты букмекера</span>
+                </div>
+                {images.length > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 font-mono">{images.length}</span>
+                )}
+              </div>
+              <div className="p-3 space-y-3">
                 <div
                   onDrop={handleDrop}
                   onDragOver={e => e.preventDefault()}
                   onClick={() => fileInputRef.current?.click()}
-                  className="border border-dashed border-border rounded-md p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors select-none"
+                  className="group border border-dashed border-border rounded cursor-pointer hover:border-cyan-500/40 hover:bg-cyan-500/3 transition-all duration-200 p-5 text-center select-none"
                 >
-                  <Upload className="w-5 h-5 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-xs text-muted-foreground">Перетащите или кликните</p>
-                  <p className="text-[11px] text-muted-foreground/50 mt-0.5">Несколько скриншотов: состав, коэффициенты, линия</p>
+                  <Upload className="w-5 h-5 mx-auto mb-2 text-muted-foreground/50 group-hover:text-cyan-400/70 transition-colors" />
+                  <p className="text-xs text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">Перетащите или кликните</p>
+                  <p className="text-[10px] text-muted-foreground/40 mt-1">Состав · Коэффициенты · Линия</p>
                 </div>
                 <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileInput} />
 
                 {images.length > 0 && (
                   <div className="space-y-2">
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {images.map((img, idx) => (
                         <div key={idx} className="relative group">
                           <img src={img.preview} alt={`#${idx + 1}`} className="w-14 h-14 object-cover rounded border border-border" />
                           <button
                             onClick={e => { e.stopPropagation(); setImages(prev => prev.filter((_, i) => i !== idx)); }}
-                            className="absolute -top-1 -right-1 w-4 h-4 bg-destructive rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                           >
                             <X className="w-2.5 h-2.5 text-white" />
                           </button>
-                          <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-[9px] text-center text-white rounded-b py-0.5">#{idx + 1}</span>
+                          <div className="absolute bottom-0 inset-x-0 bg-black/70 text-[8px] text-center text-white rounded-b py-0.5 font-mono">#{idx + 1}</div>
                         </div>
                       ))}
                     </div>
-                    <Button
-                      variant="outline" size="sm"
-                      className="w-full h-8 border-primary/40 text-primary hover:bg-primary/10 text-xs"
+                    <button
                       onClick={analyzeImages}
                       disabled={isAnalyzingImages}
+                      className="w-full h-8 rounded border border-cyan-500/30 bg-cyan-500/5 text-cyan-400 hover:bg-cyan-500/10 text-xs font-medium uppercase tracking-wider transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                     >
-                      {isAnalyzingImages
-                        ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Распознаём...</>
-                        : <>Анализировать {images.length} скриншот{images.length > 1 ? "а" : ""}</>}
-                    </Button>
+                      {isAnalyzingImages ? <><Loader2 className="w-3 h-3 animate-spin" />Распознаём OCR...</> : <><Search className="w-3 h-3" />Распознать {images.length} скриншот{images.length > 1 ? "а" : ""}</>}
+                    </button>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {/* Match params */}
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-3 border-b border-border">
-                <CardTitle className="uppercase tracking-wider text-xs text-muted-foreground">Параметры матча</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="uppercase text-xs tracking-wider text-muted-foreground">Игрок 1</Label>
-                  <Input value={player1} onChange={e => setPlayer1(e.target.value)} placeholder="Novak Djokovic" className="bg-background h-9" />
+            <div className="rounded border border-border bg-card overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-border flex items-center gap-2 bg-white/[0.02]">
+                <CircleDot className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Параметры матча</span>
+              </div>
+              <div className="p-3 space-y-3">
+
+                {/* Players VS block */}
+                <div className="rounded bg-white/[0.02] border border-border p-3 space-y-2.5">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1">
+                      <span className="w-4 h-4 rounded-sm bg-cyan-500/20 text-cyan-400 text-[9px] flex items-center justify-center font-bold">П1</span>
+                      Игрок 1
+                    </Label>
+                    <Input
+                      value={player1}
+                      onChange={e => setPlayer1(e.target.value)}
+                      placeholder="Novak Djokovic"
+                      className="h-9 bg-background border-border text-sm font-medium placeholder:text-muted-foreground/30 focus-visible:border-cyan-500/50 focus-visible:ring-cyan-500/20"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-[10px] font-bold text-muted-foreground/40 tracking-widest uppercase">vs</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1">
+                      <span className="w-4 h-4 rounded-sm bg-rose-500/20 text-rose-400 text-[9px] flex items-center justify-center font-bold">П2</span>
+                      Игрок 2
+                    </Label>
+                    <Input
+                      value={player2}
+                      onChange={e => setPlayer2(e.target.value)}
+                      placeholder="Carlos Alcaraz"
+                      className="h-9 bg-background border-border text-sm font-medium placeholder:text-muted-foreground/30 focus-visible:border-cyan-500/50 focus-visible:ring-cyan-500/20"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="uppercase text-xs tracking-wider text-muted-foreground">Игрок 2</Label>
-                  <Input value={player2} onChange={e => setPlayer2(e.target.value)} placeholder="Carlos Alcaraz" className="bg-background h-9" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="uppercase text-xs tracking-wider text-muted-foreground">Покрытие</Label>
+
+                {/* Surface + Date */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Покрытие</Label>
                     <Select value={surface} onValueChange={setSurface}>
-                      <SelectTrigger className="bg-background h-9"><SelectValue placeholder="Выбрать" /></SelectTrigger>
+                      <SelectTrigger className="h-9 bg-background border-border text-sm focus:border-cyan-500/50">
+                        <SelectValue placeholder="Выбрать" />
+                      </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Хард">Хард</SelectItem>
-                        <SelectItem value="Грунт">Грунт</SelectItem>
-                        <SelectItem value="Трава">Трава</SelectItem>
-                        <SelectItem value="Крытый">Крытый</SelectItem>
+                        <SelectItem value="Хард">🟦 Хард</SelectItem>
+                        <SelectItem value="Грунт">🟧 Грунт</SelectItem>
+                        <SelectItem value="Трава">🟩 Трава</SelectItem>
+                        <SelectItem value="Крытый">⬛ Крытый</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="uppercase text-xs tracking-wider text-muted-foreground">Дата</Label>
-                    <Input type="date" value={matchDate} onChange={e => setMatchDate(e.target.value)} className="bg-background h-9" />
+                  <div className="space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1">
+                      <Clock className="w-2.5 h-2.5" />Дата
+                    </Label>
+                    <Input type="date" value={matchDate} onChange={e => setMatchDate(e.target.value)} className="h-9 bg-background border-border text-sm focus-visible:border-cyan-500/50" />
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="uppercase text-xs tracking-wider text-muted-foreground">Турнир</Label>
-                  <Input value={tournament} onChange={e => setTournament(e.target.value)} placeholder="Wimbledon" className="bg-background h-9" />
+
+                {/* Tournament */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Турнир</Label>
+                  <Input value={tournament} onChange={e => setTournament(e.target.value)} placeholder="Wimbledon, Roland Garros..." className="h-9 bg-background border-border text-sm placeholder:text-muted-foreground/30 focus-visible:border-cyan-500/50" />
                 </div>
+
+                {/* Odds badge */}
                 {oddsData && (
-                  <div className="text-xs px-3 py-2 bg-primary/10 border border-primary/20 rounded text-primary font-mono">
-                    ✓ Коэффициенты из скриншота загружены
+                  <div className="flex items-center gap-2 px-3 py-2 rounded bg-amber-500/8 border border-amber-500/20">
+                    <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-xs text-amber-300 font-medium">Коэффициенты загружены из скриншота</span>
                   </div>
                 )}
-                <Button
+
+                {/* CTA */}
+                <button
                   onClick={startAnalysis}
                   disabled={isRunning || !player1 || !player2}
-                  className="w-full h-11 font-bold uppercase tracking-widest mt-1"
+                  className={`w-full h-11 rounded font-bold uppercase tracking-[0.15em] text-sm transition-all duration-200 flex items-center justify-center gap-2 ${
+                    isRunning
+                      ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 cursor-not-allowed"
+                      : (!player1 || !player2)
+                        ? "bg-white/5 border border-border text-muted-foreground/40 cursor-not-allowed"
+                        : "bg-cyan-500 hover:bg-cyan-400 text-black border border-cyan-400 shadow-lg shadow-cyan-500/20 hover:shadow-cyan-400/30"
+                  }`}
                 >
                   {isRunning
-                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Анализируем...</>
-                    : <><Play className="w-4 h-4 mr-2" />Запустить анализ</>}
-                </Button>
-              </CardContent>
-            </Card>
+                    ? <><Loader2 className="w-4 h-4 animate-spin" />Анализируем...</>
+                    : <><Zap className="w-4 h-4" />Запустить анализ</>}
+                </button>
+              </div>
+            </div>
+
+            {/* Detected match context */}
+            {detectedMatch && (
+              <div className="rounded border border-emerald-500/20 bg-emerald-500/5 overflow-hidden">
+                <div className="px-4 py-2 border-b border-emerald-500/20 flex items-center gap-2">
+                  <Wifi className="w-3 h-3 text-emerald-400" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Данные из сети</span>
+                </div>
+                <div className="p-3 grid grid-cols-2 gap-1.5">
+                  {[
+                    { label: "Турнир", value: detectedMatch.tournament, color: "cyan" },
+                    { label: "Покрытие", value: detectedMatch.surface, color: "emerald" },
+                    { label: "Дата", value: detectedMatch.date, color: "amber" },
+                    { label: "Раунд", value: detectedMatch.round, color: "violet" },
+                    { label: "Локация", value: detectedMatch.location, color: "rose" },
+                    { label: "Условия", value: detectedMatch.conditions, color: "sky" },
+                  ].filter(i => i.value).map(item => (
+                    <div key={item.label} className="rounded bg-white/[0.03] border border-white/5 px-2 py-1.5">
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground/60">{item.label}</div>
+                      <div className="text-[11px] text-foreground/90 font-medium truncate mt-0.5">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* RIGHT: Terminal */}
-          <div className="lg:col-span-8">
-            <Card className="border-border bg-black/70 flex flex-col" style={{ height: 620 }}>
+          {/* ═══ RIGHT PANEL — Terminal ═══ */}
+          <div className="xl:col-span-8 flex flex-col gap-4">
+
+            {/* Terminal card */}
+            <div className="rounded border border-border bg-[#060a12] flex flex-col overflow-hidden" style={{ height: 580 }}>
 
               {/* Terminal header */}
-              <CardHeader className="py-3 px-4 border-b border-border bg-card/40 flex-none flex flex-row items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-2 h-2 rounded-full flex-none ${isRunning ? "bg-red-500 animate-pulse" : phase === "done" ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
-                  <span className="text-xs uppercase font-bold text-muted-foreground tracking-widest truncate">
-                    {phase === "idle" && "Аналитическое совещание"}
-                    {phase === "research" && "Сбор данных из интернета..."}
-                    {phase === "dialogue" && "Совещание экспертов"}
-                    {phase === "recommendations" && "Формируем рекомендации..."}
-                    {phase === "done" && "Анализ завершён"}
+              <div className="flex-none flex items-center justify-between px-4 py-2.5 border-b border-border bg-white/[0.02]">
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1.5">
+                    <div className={`w-2.5 h-2.5 rounded-full ${isRunning ? "bg-red-500 ticker-live" : phase === "done" ? "bg-emerald-500" : "bg-white/10"}`} />
+                    <div className={`w-2.5 h-2.5 rounded-full ${phase !== "idle" ? "bg-amber-500" : "bg-white/10"}`} />
+                    <div className={`w-2.5 h-2.5 rounded-full ${phase === "done" ? "bg-emerald-500" : "bg-white/10"}`} />
+                  </div>
+                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70">
+                    {phase === "idle" && "// terminal · ожидание"}
+                    {phase === "research" && "// сканирование базы данных..."}
+                    {phase === "dialogue" && "// совещание аналитиков"}
+                    {phase === "recommendations" && "// генерация рекомендаций..."}
+                    {phase === "done" && "// анализ завершён ✓"}
                   </span>
                   {phase === "dialogue" && currentMsg && (
-                    <span className="text-[11px] text-primary/60 font-mono animate-pulse truncate hidden sm:block">
-                      [{currentMsg.agentLabel} печатает...]
+                    <span className="text-[10px] text-cyan-400/60 font-mono animate-pulse hidden sm:inline">
+                      {AGENT_META[currentMsg.agent]?.icon} {currentMsg.agentLabel} печатает...
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 flex-none">
+                <div className="flex items-center gap-2">
                   {usedWebSearch && (
-                    <Badge variant="outline" className="border-sky-500/40 text-sky-400 font-mono text-[10px] gap-1">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-sky-500/10 border border-sky-500/20 text-[10px] font-bold text-sky-400 uppercase tracking-wider">
                       <Wifi className="w-2.5 h-2.5" />Live
-                    </Badge>
+                    </span>
                   )}
                   {vote && (
-                    <Badge
-                      variant="outline"
-                      className={`font-mono text-[11px] uppercase ${vote.verdict === "unanimous" ? "border-emerald-500/50 text-emerald-400" : "border-yellow-500/50 text-yellow-400"}`}
-                    >
+                    <span className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${vote.verdict === "unanimous" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-amber-500/10 border-amber-500/30 text-amber-400"}`}>
                       {vote.verdict === "unanimous" ? "✓ Консенсус" : "⚠ Спорно"} {vote.avgConfidence}%
-                    </Badge>
+                    </span>
                   )}
                 </div>
-              </CardHeader>
+              </div>
 
-              {/* Scrollable content */}
-              <div ref={terminalRef} className="flex-1 overflow-y-auto p-4 font-mono text-sm space-y-4">
+              {/* Scrollable terminal body */}
+              <div ref={terminalRef} className="flex-1 overflow-y-auto p-4 space-y-3 terminal-scanline relative">
 
-                {/* Idle state */}
                 {phase === "idle" && (
-                  <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground/30 select-none">
-                    <Database className="w-8 h-8" />
-                    <span className="text-xs font-mono">// введите данные матча и нажмите «Запустить анализ»</span>
+                  <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground/20 select-none">
+                    <Database className="w-10 h-10" />
+                    <span className="text-xs font-mono tracking-widest">// введите данные матча и нажмите запустить</span>
+                    <div className="flex gap-3 text-[10px] font-mono text-muted-foreground/15 mt-2">
+                      <span>stats_expert</span>
+                      <span>·</span>
+                      <span>odds_strategist</span>
+                      <span>·</span>
+                      <span>context_expert</span>
+                    </div>
                   </div>
                 )}
 
-                {/* Research phase banner */}
-                {(phase === "research" || researchContext) && (
-                  <div className="rounded border border-sky-500/20 bg-sky-500/5 px-3 py-2 space-y-1">
-                    <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-wider">
+                {/* Research status */}
+                {(phase === "research" || (phase !== "idle" && researchMsg)) && (
+                  <div className="rounded border border-sky-500/15 bg-sky-500/5 px-3 py-2 space-y-1.5">
+                    <div className="flex items-center gap-2 text-sky-400">
                       <Search className="w-3 h-3" />
-                      {phase === "research" ? "Сбор данных" : "Данные собраны"}
+                      <span className="text-[10px] font-bold uppercase tracking-wider">Сканирование данных</span>
                       {phase === "research" && <Loader2 className="w-3 h-3 animate-spin ml-auto" />}
                     </div>
-                    {researchMsg && phase === "research" && (
-                      <div className="text-[11px] text-sky-300/70 font-mono">{researchMsg}</div>
-                    )}
-                    {detectedMatch && (
-                      <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px] font-mono">
-                        {detectedMatch.tournament && (
-                          <div className="rounded bg-sky-500/10 border border-sky-500/20 px-2 py-1">
-                            <div className="text-sky-400/60 uppercase tracking-wider">Турнир</div>
-                            <div className="text-sky-100 truncate">{detectedMatch.tournament}</div>
-                          </div>
-                        )}
-                        {detectedMatch.surface && (
-                          <div className="rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-1">
-                            <div className="text-emerald-400/60 uppercase tracking-wider">Покрытие</div>
-                            <div className="text-emerald-100 truncate">{detectedMatch.surface}</div>
-                          </div>
-                        )}
-                        {detectedMatch.date && (
-                          <div className="rounded bg-amber-500/10 border border-amber-500/20 px-2 py-1">
-                            <div className="text-amber-400/60 uppercase tracking-wider">Дата</div>
-                            <div className="text-amber-100 truncate">{detectedMatch.date}</div>
-                          </div>
-                        )}
-                        {detectedMatch.round && (
-                          <div className="rounded bg-violet-500/10 border border-violet-500/20 px-2 py-1">
-                            <div className="text-violet-400/60 uppercase tracking-wider">Стадия</div>
-                            <div className="text-violet-100 truncate">{detectedMatch.round}</div>
-                          </div>
-                        )}
-                        {detectedMatch.location && (
-                          <div className="rounded bg-rose-500/10 border border-rose-500/20 px-2 py-1 col-span-2">
-                            <div className="text-rose-400/60 uppercase tracking-wider">Локация</div>
-                            <div className="text-rose-100 truncate">{detectedMatch.location}</div>
-                          </div>
-                        )}
-                        {detectedMatch.conditions && (
-                          <div className="rounded bg-cyan-500/10 border border-cyan-500/20 px-2 py-1 col-span-2 sm:col-span-4">
-                            <div className="text-cyan-400/60 uppercase tracking-wider">Условия</div>
-                            <div className="text-cyan-100">{detectedMatch.conditions}</div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {researchContext && phase !== "research" && (
-                      <details className="mt-1">
-                        <summary className="text-[11px] text-sky-300/60 cursor-pointer hover:text-sky-300 select-none">
-                          Показать брифинг по игрокам ▸
-                        </summary>
-                        <pre className="mt-2 text-[10px] text-muted-foreground/60 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
-                          {researchContext}
-                        </pre>
-                      </details>
+                    {researchMsg && (
+                      <p className="text-[11px] font-mono text-sky-300/60">&gt; {researchMsg}</p>
                     )}
                   </div>
                 )}
 
-                {/* Dialogue turns */}
-                {dialogue.map((msg, i) => {
-                  const meta = AGENT_META[msg.agent] ?? { emoji: "🤖", color: "text-foreground", borderColor: "border-border", provider: "", providerColor: "" };
+                {/* Dialogue messages */}
+                {[...dialogue, ...(currentMsg ? [currentMsg] : [])].map((msg, idx) => {
+                  const meta = AGENT_META[msg.agent] ?? { label: msg.agentLabel, color: "text-foreground", bg: "bg-white/5", border: "border-border", provider: "AI", providerBadge: "bg-white/10 text-muted-foreground border-border", icon: "🤖" };
+                  const isCurrent = currentMsg && idx === dialogue.length;
                   return (
-                    <div key={i} className={`rounded border-l-2 ${meta.borderColor} pl-3 space-y-1.5`}>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-[11px] font-bold uppercase tracking-wider ${meta.color} flex items-center gap-1.5`}>
-                          <span>{meta.emoji}</span>
-                          <span>{msg.agentLabel}</span>
-                        </span>
-                        <span className={`text-[10px] font-mono ${meta.providerColor}`}>· {meta.provider}</span>
-                        {msg.isReply && <span className="text-[10px] text-muted-foreground/40 font-normal">↩ ответ</span>}
-                        <span className="ml-auto text-muted-foreground/20 text-[10px]">#{i + 1}</span>
+                    <div key={idx} className={`rounded border ${meta.border} ${meta.bg} overflow-hidden msg-appear`}>
+                      <div className={`flex items-center gap-2 px-3 py-2 border-b ${meta.border} bg-white/[0.02]`}>
+                        <span className="text-sm">{meta.icon}</span>
+                        <span className={`text-[11px] font-bold uppercase tracking-wider ${meta.color}`}>{msg.agentLabel}</span>
+                        {msg.isReply && <ChevronRight className="w-3 h-3 text-muted-foreground/30" />}
+                        <span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded border font-mono uppercase tracking-wide ${meta.providerBadge}`}>{meta.provider}</span>
+                        {isCurrent && <span className="w-1.5 h-3.5 bg-current rounded-sm animate-pulse opacity-60 ml-1" />}
                       </div>
-                      <div className="text-[13px] text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                        {msg.content}
+                      <div className="px-3 py-2.5 text-[12px] leading-relaxed text-foreground/80 font-mono whitespace-pre-wrap">
+                        {msg.content || <span className="text-muted-foreground/30 italic">...</span>}
                       </div>
                     </div>
                   );
                 })}
 
-                {/* Streaming current message */}
-                {currentMsg && (
-                  <div className={`rounded border-l-2 ${AGENT_META[currentMsg.agent]?.borderColor ?? "border-border"} pl-3 space-y-1.5`}>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-[11px] font-bold uppercase tracking-wider ${AGENT_META[currentMsg.agent]?.color ?? "text-foreground"} flex items-center gap-1.5`}>
-                        <span>{AGENT_META[currentMsg.agent]?.emoji ?? "🤖"}</span>
-                        <span>{currentMsg.agentLabel}</span>
-                      </span>
-                      <span className={`text-[10px] font-mono ${AGENT_META[currentMsg.agent]?.providerColor ?? ""}`}>· {AGENT_META[currentMsg.agent]?.provider}</span>
-                      {currentMsg.isReply && <span className="text-[10px] text-muted-foreground/40">↩ ответ</span>}
-                    </div>
-                    <div className="text-[13px] text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                      {currentMsg.content}
-                      <span className="inline-block w-2 h-3.5 bg-primary ml-0.5 animate-pulse align-middle" />
-                    </div>
-                  </div>
-                )}
-
-                {/* Generating recommendations */}
-                {phase === "recommendations" && (
-                  <div className="flex items-center gap-2 text-muted-foreground/50 text-xs font-mono animate-pulse">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    Формируем итоговые рекомендации на основе данных...
+                {phase === "recommendations" && recommendations.length === 0 && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded border border-amber-500/20 bg-amber-500/5 text-amber-400">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span className="text-xs font-mono uppercase tracking-wider">Генерируем беттинг-рекомендации...</span>
                   </div>
                 )}
               </div>
-            </Card>
-          </div>
-        </div>
+            </div>
 
-        {/* ── RECOMMENDATIONS ── */}
-        {recommendations.length > 0 && (
-          <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-muted-foreground">
-                <TrendingUp className="w-4 h-4 text-primary" />
-                Итоговые рекомендации
-              </h3>
-              {savedPredictionId && (
-                podcastUrl ? (
+            {/* ── RECOMMENDATIONS ── */}
+            {recommendations.length > 0 && (
+              <div className="rounded border border-border bg-card overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-border flex items-center justify-between bg-white/[0.02]">
                   <div className="flex items-center gap-2">
-                    <Headphones className="w-4 h-4 text-primary" />
-                    <audio controls src={podcastUrl} className="h-8 max-w-xs" />
+                    <Target className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Беттинг-рекомендации</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono">{recommendations.length}</span>
                   </div>
-                ) : (
-                  <Button
-                    variant="outline" size="sm"
-                    className="h-8 border-primary/40 text-primary hover:bg-primary/10 text-xs gap-1.5"
-                    onClick={generatePodcast}
-                    disabled={isGeneratingPodcast}
-                  >
-                    {isGeneratingPodcast
-                      ? <><Loader2 className="w-3 h-3 animate-spin" />Создаём подкаст...</>
-                      : <><Headphones className="w-3.5 h-3.5" />Создать аудиоподкаст</>}
-                  </Button>
-                )
-              )}
-            </div>
+                  {savedPredictionId && (
+                    <button
+                      onClick={generatePodcast}
+                      disabled={isGeneratingPodcast}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded border border-violet-500/30 bg-violet-500/5 text-violet-400 hover:bg-violet-500/10 text-[11px] font-medium uppercase tracking-wider transition-colors disabled:opacity-50"
+                    >
+                      {isGeneratingPodcast ? <Loader2 className="w-3 h-3 animate-spin" /> : <Headphones className="w-3 h-3" />}
+                      Подкаст
+                    </button>
+                  )}
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {recommendations.map((rec, i) => (
-                <Card key={i} className={`border ${confidenceBg(rec.confidencePercent)}`}>
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className={`text-xs font-bold uppercase tracking-wider ${confidenceColor(rec.confidencePercent)}`}>
-                        {rec.type === "outcome" && "Исход"}
-                        {rec.type === "total"   && "Тотал"}
-                        {rec.type === "handicap"&& "Гандикап"}
-                        {rec.type === "express" && "Экспресс"}
-                        {!["outcome","total","handicap","express"].includes(rec.type) && rec.type}
+                <div className="p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {recommendations.map((rec, idx) => (
+                    <div key={idx} className="rounded border border-border bg-background/60 overflow-hidden hover:border-amber-500/30 transition-colors">
+                      {/* Betting slip header */}
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-white/[0.02]">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{rec.type}</span>
+                        <OddsChip value={rec.odds} />
                       </div>
-                      <div className="text-right flex-none">
-                        <div className="text-2xl font-bold text-primary font-mono leading-none">{Number(rec.odds).toFixed(2)}</div>
-                        <div className="text-[10px] text-muted-foreground/50 uppercase">кф</div>
+                      <div className="px-3 py-2.5 space-y-2.5">
+                        <p className="text-xs text-foreground/80 leading-relaxed">{rec.description}</p>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                            <span className="flex items-center gap-1"><Percent className="w-2.5 h-2.5" />Уверенность</span>
+                          </div>
+                          <ConfBar pct={rec.confidencePercent} />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-muted-foreground uppercase">Банк</span>
+                          <span className="text-xs font-bold font-mono text-emerald-400">{rec.bankPercent}%</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="font-medium text-sm leading-snug">{rec.description}</div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Уверенность</span>
-                        <span className={`font-bold font-mono ${confidenceColor(rec.confidencePercent)}`}>{rec.confidencePercent}%</span>
-                      </div>
-                      <Progress value={rec.confidencePercent} className="h-1.5" />
-                    </div>
-                    <div className="flex justify-between items-center pt-1 border-t border-border/40 text-xs">
-                      <span className="text-muted-foreground">Размер ставки</span>
-                      <span className="font-bold">{rec.bankPercent}% банка</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                  ))}
+                </div>
 
-            {(riskNotes || cashoutAdvice) && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {riskNotes && (
-                  <Card className="border-destructive/20 bg-destructive/5">
-                    <CardContent className="p-4 flex gap-3 items-start">
-                      <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-                      <div>
-                        <div className="text-xs font-bold uppercase tracking-wider text-destructive mb-1">Риски</div>
-                        <div className="text-xs text-muted-foreground leading-relaxed">{riskNotes}</div>
+                {/* Risk + Cashout */}
+                {(riskNotes || cashoutAdvice) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-3 pb-3">
+                    {riskNotes && (
+                      <div className="rounded border border-red-500/20 bg-red-500/5 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 text-red-400 text-[10px] font-bold uppercase tracking-wider">
+                          <ShieldAlert className="w-3 h-3" />Риск-факторы
+                        </div>
+                        <p className="text-[11px] text-foreground/70 leading-relaxed">{riskNotes}</p>
                       </div>
-                    </CardContent>
-                  </Card>
+                    )}
+                    {cashoutAdvice && (
+                      <div className="rounded border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+                          <StopCircle className="w-3 h-3" />Кэшаут-стратегия
+                        </div>
+                        <p className="text-[11px] text-foreground/70 leading-relaxed">{cashoutAdvice}</p>
+                      </div>
+                    )}
+                  </div>
                 )}
-                {cashoutAdvice && (
-                  <Card className="border-blue-500/20 bg-blue-500/5">
-                    <CardContent className="p-4 flex gap-3 items-start">
-                      <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                      <div>
-                        <div className="text-xs font-bold uppercase tracking-wider text-blue-400 mb-1">Кэшаут</div>
-                        <div className="text-xs text-muted-foreground leading-relaxed">{cashoutAdvice}</div>
-                      </div>
-                    </CardContent>
-                  </Card>
+
+                {/* Podcast player */}
+                {podcastUrl && (
+                  <div className="mx-3 mb-3 rounded border border-violet-500/20 bg-violet-500/5 p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-violet-400 text-[10px] font-bold uppercase tracking-wider">
+                      <Headphones className="w-3.5 h-3.5" />Аудио-подкаст готов
+                    </div>
+                    <audio controls src={podcastUrl} className="w-full h-8" style={{ filter: "invert(1) hue-rotate(180deg)" }} />
+                  </div>
                 )}
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
     </Layout>
   );
