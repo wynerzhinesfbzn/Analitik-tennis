@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Tennis Analyst AI"
+version = "1.0.0"
+id = "artifacts/tennis-analyst"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22286
+
+[services.development]
+run = "pnpm --filter @workspace/tennis-analyst run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/tennis-analyst", "run", "build" ]
+publicDir = "artifacts/tennis-analyst/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22286"
+BASE_PATH = "/"
