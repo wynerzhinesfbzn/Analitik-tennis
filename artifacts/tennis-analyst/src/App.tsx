@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import AnalysisPage from "@/pages/analysis";
 import HistoryPage from "@/pages/history";
+import GitPushPage from "@/pages/git-push";
 
 const queryClient = new QueryClient();
 
@@ -13,6 +14,7 @@ function Router() {
     <Switch>
       <Route path="/" component={AnalysisPage} />
       <Route path="/history" component={HistoryPage} />
+      <Route path="/git-push" component={GitPushPage} />
       <Route component={NotFound} />
     </Switch>
   );
