@@ -208,6 +208,58 @@ router.post("/predictions/:id/podcast", async (req, res): Promise<void> => {
   }
 });
 
+// POST /predictions/lookup-match — auto-detect surface, date, round via web search
+router.post("/predictions/lookup-match", async (req, res): Promise<void> => {
+  const { player1, player2, tournament } = req.body as Record<string, string>;
+  if (!player1 || !player2) {
+    res.status(400).json({ error: "Нужны player1 и player2" });
+    return;
+  }
+
+  try {
+    const matchInfo = tournament
+      ? `${player1} vs ${player2} at ${tournament}`
+      : `${player1} vs ${player2}`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_completion_tokens: 600,
+      messages: [
+        {
+          role: "system",
+          content: `You are a tennis match lookup assistant. Given a match, find or infer the surface, date, and tournament details.
+Return ONLY valid JSON:
+{
+  "surface": "Хард" | "Грунт" | "Трава" | "Крытый" | null,
+  "matchDate": "YYYY-MM-DD" | null,
+  "tournament": string | null,
+  "round": string | null,
+  "location": string | null,
+  "confidence": "high" | "medium" | "low"
+}
+Use current context and knowledge of the ATP/WTA calendar. If tournament name hints at surface (e.g. Roland Garros = clay, Wimbledon = grass, US Open = hard) use that. If no specific date is known, estimate based on tournament schedule.`,
+        },
+        {
+          role: "user",
+          content: `Find match details for: ${matchInfo}. Today is ${new Date().toISOString().split("T")[0]}.`,
+        },
+      ],
+    });
+
+    const raw = response.choices[0]?.message?.content ?? "{}";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    try {
+      const data = JSON.parse(cleaned);
+      res.json(data);
+    } catch {
+      res.json({ surface: null, matchDate: null, tournament: null, round: null, location: null, confidence: "low" });
+    }
+  } catch (err) {
+    req.log.error({ err }, "Error in lookup-match");
+    res.status(500).json({ error: "Ошибка поиска матча" });
+  }
+});
+
 // GET /predictions
 router.get("/predictions", async (_req, res): Promise<void> => {
   const predictions = await db.select().from(predictionsTable)

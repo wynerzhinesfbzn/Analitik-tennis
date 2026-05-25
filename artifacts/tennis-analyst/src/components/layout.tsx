@@ -1,111 +1,141 @@
 import { Link, useLocation } from "wouter";
-import { Activity, History, TrendingUp, Zap, BarChart2, Radio } from "lucide-react";
+import { Activity, History, Sun, Moon, TrendingUp, Zap } from "lucide-react";
 import { ReactNode, useEffect, useState } from "react";
 
 function LiveClock() {
-  const [time, setTime] = useState(() => new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+  const [time, setTime] = useState(() =>
+    new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+  );
   useEffect(() => {
-    const id = setInterval(() => setTime(new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })), 1000);
+    const id = setInterval(() =>
+      setTime(new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })),
+    1000);
     return () => clearInterval(id);
   }, []);
-  return <span className="font-mono text-xs text-cyan-400/70 tabular-nums">{time}</span>;
+  return <span className="font-mono text-xs tabular-nums text-muted-foreground">{time}</span>;
+}
+
+export function useTheme() {
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    const stored = localStorage.getItem("ghv-theme");
+    return (stored === "light" || stored === "dark") ? stored : "dark";
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "light") {
+      root.classList.add("light");
+      root.classList.remove("dark");
+    } else {
+      root.classList.remove("light");
+      root.classList.add("dark");
+    }
+    localStorage.setItem("ghv-theme", theme);
+  }, [theme]);
+
+  return { theme, toggle: () => setTheme(t => t === "dark" ? "light" : "dark") };
 }
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const { theme, toggle } = useTheme();
 
   const navItems = [
-    { href: "/", label: "Анализ матча", icon: Activity, sub: "AI прогноз" },
-    { href: "/history", label: "История ставок", icon: History, sub: "Статистика" },
+    { href: "/", label: "Анализ", icon: Activity },
+    { href: "/history", label: "История", icon: History },
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground font-sans" style={{ backgroundImage: "radial-gradient(ellipse at 20% 0%, rgba(14,165,233,0.04) 0%, transparent 60%)" }}>
+    <div className="min-h-screen flex flex-col bg-background text-foreground font-sans">
 
-      {/* Top Header Bar */}
-      <header className="flex-none border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="flex items-center justify-between px-4 h-12">
+      {/* Header */}
+      <header className="flex-none border-b border-border bg-card/90 backdrop-blur-sm sticky top-0 z-50 shadow-sm">
+        <div className="flex items-center justify-between px-4 h-14">
 
           {/* Brand */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-cyan-400" />
-              </div>
-              <div className="flex flex-col leading-none">
-                <span className="text-sm font-bold tracking-widest uppercase text-foreground">BetAnalytics</span>
-                <span className="text-[9px] tracking-[0.2em] uppercase text-cyan-400/60">Tennis · Pro Edition</span>
-              </div>
+          <Link href="/" className="flex items-center gap-3 group select-none">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+              <span className="text-white font-black text-base leading-none">Г</span>
             </div>
-
-            <div className="hidden md:flex items-center gap-1 ml-4 px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20">
-              <Radio className="w-2.5 h-2.5 text-red-400 ticker-live" />
-              <span className="text-[10px] font-bold tracking-widest text-red-400 uppercase">Live</span>
+            <div className="flex flex-col leading-none">
+              <span className="font-black text-base tracking-tight text-foreground">
+                Грунт, Хард, Валуй!
+              </span>
+              <span className="text-[10px] text-muted-foreground tracking-wide">
+                Аналитика ставок на теннис · AI
+              </span>
             </div>
-          </div>
+          </Link>
 
-          {/* Nav */}
+          {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
             {navItems.map((item) => {
-              const isActive = location === item.href;
+              const isActive = location === item.href || (item.href === "/" && location === "");
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 px-4 py-1.5 text-xs font-medium transition-all duration-150 rounded-sm ${
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-150 ${
                     isActive
-                      ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
-                      : "text-muted-foreground hover:text-foreground hover:bg-white/5 border border-transparent"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
                   }`}
                 >
-                  <item.icon className="w-3.5 h-3.5" />
-                  <span className="tracking-wide uppercase">{item.label}</span>
+                  <item.icon className="w-4 h-4" />
+                  <span>{item.label}</span>
                 </Link>
               );
             })}
           </nav>
 
-          {/* Right meta */}
+          {/* Right */}
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-4 text-[10px] text-muted-foreground font-mono border-r border-border pr-3">
+            <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground font-mono pr-3 border-r border-border">
               <span className="flex items-center gap-1">
-                <BarChart2 className="w-3 h-3 text-emerald-400" />
-                <span className="text-emerald-400">API</span>
-                <span className="text-emerald-400/40">●</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>3 AI</span>
               </span>
               <span className="flex items-center gap-1">
-                <Zap className="w-3 h-3 text-cyan-400" />
-                <span className="text-cyan-400">AI</span>
-                <span className="text-cyan-400/40">3x</span>
+                <Zap className="w-3 h-3 text-amber-400" />
+                <span>PRO</span>
               </span>
             </div>
             <LiveClock />
+            <button
+              onClick={toggle}
+              className="w-8 h-8 rounded-xl flex items-center justify-center bg-accent hover:bg-accent/80 text-muted-foreground hover:text-foreground transition-all"
+              title={theme === "dark" ? "Светлая тема" : "Тёмная тема"}
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
           </div>
         </div>
 
         {/* Mobile nav */}
         <div className="md:hidden flex border-t border-border">
           {navItems.map((item) => {
-            const isActive = location === item.href;
+            const isActive = location === item.href || (item.href === "/" && location === "");
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs transition-colors ${
-                  isActive ? "text-cyan-400 border-b-2 border-cyan-400" : "text-muted-foreground"
+                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors ${
+                  isActive
+                    ? "text-primary border-b-2 border-primary bg-primary/5"
+                    : "text-muted-foreground"
                 }`}
               >
-                <item.icon className="w-3.5 h-3.5" />
-                <span className="uppercase tracking-wider">{item.label}</span>
+                <item.icon className="w-4 h-4" />
+                <span>{item.label}</span>
               </Link>
             );
           })}
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main */}
       <main className="flex-1 overflow-y-auto">
-        <div className="p-3 md:p-5">
+        <div className="p-3 md:p-6">
           {children}
         </div>
       </main>
