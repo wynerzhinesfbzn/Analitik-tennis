@@ -407,6 +407,74 @@ router.delete("/predictions/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
+// POST /predictions/match-card — generate AI sports betting card image
+router.post("/predictions/match-card", async (req, res): Promise<void> => {
+  const { player1, player2, tournament, surface, topRec, prediction } = req.body as {
+    player1: string;
+    player2: string;
+    tournament?: string;
+    surface?: string;
+    topRec?: { description: string; odds: number; bankPercent: number; confidencePercent: number };
+    prediction?: string;
+  };
+
+  if (!player1 || !player2) {
+    res.status(400).json({ error: "Укажите имена игроков" });
+    return;
+  }
+
+  const surfaceDesc: Record<string, string> = {
+    "Грунт": "Roland Garros clay court, orange-red clay surface, red brick dust, stadium with crowd",
+    "Хард": "US Open / Australian Open hard court, blue-green hard surface, modern stadium",
+    "Трава": "Wimbledon grass court, lush green grass, traditional stadium",
+    "Крытый": "indoor tennis arena, indoor hard court, dramatic artificial floodlights",
+  };
+  const courtDesc = surfaceDesc[surface ?? ""] ?? "professional tennis court, stadium with crowd";
+
+  const prompt = `Ultra-realistic professional sports betting promotional poster, portrait 9:16 format.
+
+BACKGROUND: Dark dramatic scene — ${courtDesc}, blurred bokeh stadium lights, deep navy/black gradient overlay. Cinematic epic atmosphere.
+
+LAYOUT (from top to bottom):
+1. TOP (10%): Bold text "${(tournament || "ТЕННИСНЫЙ ТУРНИР").toUpperCase()}" — large, golden/orange gradient font, centered. Small court surface badge below it.
+
+2. PLAYERS SECTION (50%): Two photorealistic tennis player portraits side by side:
+   LEFT: Photorealistic portrait of professional tennis player "${player1}", intense competitive face, looking toward center, dramatic top-down arena lighting, realistic skin, realistic clothing (tennis outfit), sweat, determination. Below: name "${player1.toUpperCase()}" in bold cyan-white, player style tag.
+   RIGHT: Photorealistic portrait of professional tennis player "${player2}", intense competitive face, looking toward center, dramatic lighting. Below: name "${player2.toUpperCase()}" in bold amber-white.
+   CENTER between them: Large glowing "VS" text in orange flame/fire gradient effect.
+
+3. PREDICTION BANNER (15%): ${prediction ? `Dark panel with glowing text: "ПРОГНОЗ: ${prediction.toUpperCase()}" in bright green-emerald glow with checkmark icon.` : ""}
+
+4. BETTING CARD (25%): Dark semi-transparent panel at bottom with:
+   ${topRec ? `- "КАФ: ${topRec.odds.toFixed(2)}" in HUGE bold cyan monospace numbers (dominant element)
+   - "БАНК: ${topRec.bankPercent}%" in bright green
+   - Confidence bar showing ${topRec.confidencePercent}%` : "- Professional betting statistics display"}
+
+STYLE: ESPN/sports broadcast aesthetic, photorealistic faces, ultra-sharp 8K quality. Color palette: deep navy background, bright cyan accents, orange/amber fire elements, emerald green for wins. Cinematic dramatic lighting, film grain texture. Russian text labels throughout. NO watermarks, NO logos, NO borders.`;
+
+  try {
+    const imgRes = await openai.images.generate({
+      model: "gpt-image-1",
+      prompt,
+      n: 1,
+      size: "1024x1792",
+      quality: "high",
+    } as Parameters<typeof openai.images.generate>[0]) as { data: Array<{ b64_json?: string; url?: string }> };
+
+    const imageData = imgRes.data[0];
+    const b64 = imageData?.b64_json;
+    if (!b64) {
+      res.status(500).json({ error: "Не удалось сгенерировать изображение" });
+      return;
+    }
+
+    res.json({ imageBase64: b64 });
+  } catch (err) {
+    req.log.error({ err }, "Error generating match card");
+    res.status(500).json({ error: "Ошибка генерации карточки матча" });
+  }
+});
+
 function formatPrediction(p: typeof predictionsTable.$inferSelect) {
   return { ...p, createdAt: p.createdAt.toISOString() };
 }

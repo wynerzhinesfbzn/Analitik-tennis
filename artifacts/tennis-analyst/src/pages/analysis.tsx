@@ -9,7 +9,7 @@ import {
   Play, Upload, X, Headphones, Loader2, TrendingUp, TrendingDown,
   AlertTriangle, Search, Brain, Activity, Send, RefreshCw,
   Sparkles, Plus, Trash2, ChevronRight, Target, Zap, CheckCircle2,
-  Clock, MapPin, Layers, BarChart3, ShieldAlert,
+  Clock, MapPin, Layers, BarChart3, ShieldAlert, ImageIcon, Download,
 } from "lucide-react";
 
 /* ── TYPES ── */
@@ -127,6 +127,9 @@ export default function AnalysisPage() {
   const [podcastUrl, setPodcastUrl] = useState<string | null>(null);
   const [isPublishingTelegram, setIsPublishingTelegram] = useState(false);
   const [telegramPublished, setTelegramPublished] = useState(false);
+  const [isGeneratingCard, setIsGeneratingCard] = useState(false);
+  const [cardImageBase64, setCardImageBase64] = useState<string | null>(null);
+  const [showCardModal, setShowCardModal] = useState(false);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -419,6 +422,27 @@ export default function AnalysisPage() {
       toast({ title: data.alreadyPublished ? "Уже опубликовано" : "✅ Опубликовано в Telegram!" });
     } catch { toast({ title: "Ошибка публикации", variant: "destructive" }); }
     finally { setIsPublishingTelegram(false); }
+  };
+
+  const generateMatchCard = async () => {
+    setIsGeneratingCard(true);
+    try {
+      const topRec = recommendations.find(r => r.type === "outcome") ?? recommendations[0] ?? null;
+      const prediction = topRec?.description ?? "";
+      const res = await fetch("/api/predictions/match-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ player1, player2, tournament, surface, topRec, prediction }),
+      });
+      const data = await res.json();
+      if (data.imageBase64) {
+        setCardImageBase64(data.imageBase64);
+        setShowCardModal(true);
+      } else {
+        toast({ title: data.error ?? "Не удалось сгенерировать карточку", variant: "destructive" });
+      }
+    } catch { toast({ title: "Ошибка генерации карточки", variant: "destructive" }); }
+    finally { setIsGeneratingCard(false); }
   };
 
   const isRunning = phase === "research" || phase === "dialogue" || phase === "recommendations";
@@ -965,6 +989,16 @@ export default function AnalysisPage() {
                         {isPublishingTelegram ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
                         {telegramPublished ? "✅ В Telegram" : "Telegram"}
                       </Button>
+                      <Button
+                        onClick={generateMatchCard}
+                        disabled={isGeneratingCard}
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl border-violet-400/40 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10"
+                      >
+                        {isGeneratingCard ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5 mr-1.5" />}
+                        {isGeneratingCard ? "Генерирую..." : "Карточка матча"}
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -1203,6 +1237,49 @@ export default function AnalysisPage() {
           </div>
         )}
       </div>
+
+      {/* ══ MATCH CARD MODAL ══ */}
+      {showCardModal && cardImageBase64 && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
+          onClick={() => setShowCardModal(false)}
+        >
+          <div
+            className="relative w-full max-w-xs sm:max-w-sm"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowCardModal(false)}
+              className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-gray-800 border border-white/20 flex items-center justify-center text-white hover:bg-gray-700 transition-colors shadow-lg"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={`data:image/png;base64,${cardImageBase64}`}
+              alt={`${player1} vs ${player2} — карточка матча`}
+              className="w-full rounded-2xl shadow-2xl ring-1 ring-white/10"
+            />
+            <div className="mt-3 flex gap-2 justify-center">
+              <a
+                href={`data:image/png;base64,${cardImageBase64}`}
+                download={`${player1.replace(/\s+/g, "-")}-vs-${player2.replace(/\s+/g, "-")}.png`}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-500/20 border border-violet-500/30 text-violet-300 text-sm font-semibold hover:bg-violet-500/30 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Скачать карточку
+              </a>
+              <button
+                onClick={generateMatchCard}
+                disabled={isGeneratingCard}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/60 text-sm font-semibold hover:bg-white/10 transition-colors disabled:opacity-50"
+              >
+                {isGeneratingCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Новый вариант
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
