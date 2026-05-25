@@ -134,6 +134,119 @@ async function deleteCache(key: string): Promise<void> {
   } catch { /* ignore */ }
 }
 
+// ── Free DuckDuckGo search (replaces paid web_search_preview) ─────────────────
+
+async function ddgSearch(query: string, maxSnippets = 3): Promise<string> {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=us-en`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9,ru;q=0.8",
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return "";
+    const html = await res.text();
+    const snippets: string[] = [];
+    const re = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null && snippets.length < maxSnippets) {
+      const text = m[1]
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">").replace(/&#x27;/g, "'").replace(/&nbsp;/g, " ")
+        .replace(/\s+/g, " ").trim();
+      if (text.length > 20) snippets.push(text);
+    }
+    return snippets.join(" | ");
+  } catch {
+    return "";
+  }
+}
+
+async function tryDdgResearch(
+  player1: string,
+  player2: string,
+  hintTournament: string | undefined,
+  hintSurface: string | undefined,
+  hintDate: string | undefined,
+  send: SSESendFn,
+): Promise<MatchResearch | null> {
+  const today = hintDate ?? new Date().toISOString().slice(0, 10);
+  const month = today.slice(0, 7);
+
+  send({ type: "research_progress", message: "🦆 DuckDuckGo поиск (бесплатно, 7 запросов)..." });
+
+  const queries = [
+    `"${player1}" "${player2}" tennis head to head h2h 2024 2025`,
+    `${player1} tennis injury fitness withdrawal ${month}`,
+    `${player2} tennis injury fitness withdrawal ${month}`,
+    `${player1} tennis recent results form ${month}`,
+    `${player2} tennis recent results form ${month}`,
+    `${player1} ${player2} ${hintTournament ?? "tennis"} odds betting ${month}`,
+    `${player1} OR ${player2} tennis coach family personal context 2025`,
+  ];
+
+  const results = await Promise.all(
+    queries.map(async (q, i) => {
+      send({ type: "research_progress", message: `🔍 Запрос ${i + 1}/7: ${q.slice(0, 65)}...` });
+      return ddgSearch(q, 3);
+    }),
+  );
+
+  const searchContext = queries
+    .map((q, i) => `[${i + 1}] ${q}\n→ ${results[i] || "нет результатов"}`)
+    .join("\n\n");
+
+  send({ type: "research_progress", message: "🧠 Структурирование данных (GPT-4o-mini)..." });
+
+  try {
+    const res = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 3000,
+      messages: [
+        {
+          role: "system",
+          content: `Ты — теннисный аналитик. На основе данных поиска и своих знаний (до 2025 г.) составь JSON досье матча.
+ПРАВИЛА: заполняй только достоверные данные. Для неизвестного — "НЕ НАЙДЕНО" или "—".
+fatigueScore: число 0-10 (0=свежий, 10=измотан полностью).
+Верни ТОЛЬКО валидный JSON без markdown.`,
+        },
+        {
+          role: "user",
+          content: `Матч: ${player1} vs ${player2}
+Турнир: ${hintTournament ?? "неизвестен"} | Покрытие: ${hintSurface ?? "неизвестно"} | Дата: ${today}
+
+ДАННЫЕ ИЗ ПОИСКА (DuckDuckGo, бесплатно):
+${searchContext}
+
+Верни JSON точно по этой схеме (player2 — аналогично player1):
+${JSON_SCHEMA(player1, player2)}`,
+        },
+      ],
+    });
+
+    const raw = res.choices[0]?.message?.content ?? "";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const data = JSON.parse(cleaned) as MatchResearch;
+    if (data.player1) data.player1.name = player1;
+    if (data.player2) data.player2.name = player2;
+
+    const estIn  = Math.ceil((res.usage?.prompt_tokens    ?? 3000));
+    const estOut = Math.ceil((res.usage?.completion_tokens ?? 800));
+    const costUsd = (estIn * 0.15 + estOut * 0.60) / 1_000_000;
+    logger.info({ player1, player2, ddgQueries: 7, costUsd: `$${costUsd.toFixed(5)}`, costRub: `${(costUsd * 90).toFixed(2)} руб`, model: "gpt-4o-mini" }, "💰 COST LOG research");
+    send({ type: "cost_log", phase: "research", costUsd, costRub: costUsd * 90, ddgQueries: 7, model: "gpt-4o-mini" });
+
+    return data;
+  } catch (err) {
+    logger.warn({ err }, "DDG research structuring failed — falling back to knowledge base");
+    return null;
+  }
+}
+
 // ── JSON schema ───────────────────────────────────────────────────────────────
 
 const PLAYER_SCHEMA = (name: string) => `{
@@ -574,9 +687,8 @@ export async function researchMatch(
     send({ type: "research_progress", message: `🔄 Принудительное обновление данных...` });
   }
 
-  // Deep web search
-  send({ type: "research_progress", message: `🌐 Глубокий веб-поиск: травмы, форма, усталость, личный контекст...` });
-  const webResult = await tryWebSearchResearch(player1, player2, tournament, surface, matchDate);
+  // Free DuckDuckGo search (7 запросов, $0) + GPT-4o-mini structuring (~$0.002)
+  const webResult = await tryDdgResearch(player1, player2, tournament, surface, matchDate, send);
 
   if (webResult) {
     // Cache the result

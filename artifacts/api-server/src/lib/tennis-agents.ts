@@ -1,13 +1,13 @@
 /**
- * Three agents, three different AI providers:
- *  📊 Аналитик Статистики  → Google Gemini  (gemini-3.1-pro-preview)
- *  💰 Беттинг-стратег      → Anthropic Claude (claude-opus-4-7)
- *  🧠 Контекстный эксперт  → OpenAI GPT      (gpt-5.4)
+ * ЭКОНОМИЧНАЯ АРХИТЕКТУРА (≤2 руб / прогноз):
+ *  Один комбинированный вызов GPT-4o-mini ($0.15/M in, $0.60/M out)
+ *  с тремя секциями [ВИКТОР]/[СЕРЖ]/[МАРИНА] + [СТАВКИ] JSON.
+ *  Веб-поиск: DuckDuckGo бесплатно (7 запросов через tennis-research.ts).
+ *  Итого: ~$0.005 ≈ 0.45 руб за один прогноз.
  */
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { textToSpeech } from "@workspace/integrations-openai-ai-server/audio";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { ai as gemini } from "@workspace/integrations-gemini-ai";
+import { logger } from "../lib/logger";
 import { researchMatch, buildResearchContext, type MatchResearch } from "./tennis-research";
 import { computeMLAdjustment } from "./tennis-ml";
 
@@ -198,50 +198,67 @@ ${researchContext}
   return base + "\n\n" + (roleSpecific[agent] ?? "");
 }
 
-// ── Gemini streaming ──────────────────────────────────────────────────────────
-async function callGemini(systemPrompt: string, userPrompt: string, send: SSESendFn, agentKey: string): Promise<string> {
-  const stream = await gemini.models.generateContentStream({
-    model: "gemini-3.1-pro-preview",
-    config: { maxOutputTokens: 8192, systemInstruction: systemPrompt },
-    contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-  });
-
-  let full = "";
-  for await (const chunk of stream) {
-    const text = chunk.text ?? "";
-    if (text) {
-      full += text;
-      send({ type: "agent_chunk", agent: agentKey, content: text });
-    }
-  }
-  return full;
+// ── Section definitions for combined single-call parsing ──────────────────────
+interface AgentSection {
+  agent: string;
+  agentLabel: string;
+  openTag: string;
+  closeTag: string;
 }
 
-// ── Anthropic streaming ───────────────────────────────────────────────────────
-async function callClaude(systemPrompt: string, userPrompt: string, send: SSESendFn, agentKey: string): Promise<string> {
-  const stream = anthropic.messages.stream({
-    model: "claude-sonnet-4-5",
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userPrompt }],
-  });
+const AGENT_SECTIONS: AgentSection[] = [
+  { agent: "stats_expert",    agentLabel: "Виктор · Статистик",  openTag: "[ВИКТОР]",  closeTag: "[/ВИКТОР]"  },
+  { agent: "odds_strategist", agentLabel: "Серж · Беттор-шарп",  openTag: "[СЕРЖ]",    closeTag: "[/СЕРЖ]"    },
+  { agent: "context_expert",  agentLabel: "Марина · Инсайдер",   openTag: "[МАРИНА]",  closeTag: "[/МАРИНА]"  },
+];
 
-  let full = "";
-  for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-      const text = event.delta.text;
-      full += text;
-      send({ type: "agent_chunk", agent: agentKey, content: text });
-    }
-  }
-  return full;
-}
+// ── Single combined GPT-4o-mini call (replaces 6 expensive rounds) ────────────
+async function runCombinedAgents(
+  match: MatchData,
+  researchContext: string,
+  mlContextText: string,
+  send: SSESendFn,
+): Promise<{
+  dialogue: AgentMessage[];
+  recommendations: BettingRecommendation[];
+  vote: string;
+  riskNotes: string;
+  cashoutAdvice: string;
+}> {
+  const startMs = Date.now();
 
-// ── OpenAI streaming ──────────────────────────────────────────────────────────
-async function callGPT(systemPrompt: string, userPrompt: string, send: SSESendFn, agentKey: string): Promise<string> {
+  const systemPrompt = `Ты — закрытое совещание трёх профессиональных теннисных аналитиков. Каждый анализирует матч со своей специализации. Говори как живой эксперт коллегам — конкретные цифры, живая речь, никаких шаблонных фраз.
+
+ВИКТОР — статистик и тактик (📊): рейтинг, форма, H2H, покрытие, матчап удар-vs-удар, конкретные вероятности победы в %.
+СЕРЖ — беттор-шарп (💹): где edge у букмекеров, конкретные ставки с KF и % банка, VALUE-расчёт, ответ на вопрос Виктора.
+МАРИНА — психолог и физиотерапевт (🧠): усталость→механика удара, психотип под давлением, личный контекст, вердикт по ставкам Сержа (✅⚠️🚫), кэшаут-триггер.
+
+СТРОГИЙ ФОРМАТ (теги обязательны, без отклонений):
+
+[ВИКТОР]
+...Виктор говорит 220-270 слов: статистика, тактический матчап, вероятности, острый вопрос Сержу...
+[/ВИКТОР]
+
+[СЕРЖ]
+...Серж говорит 220-270 слов: коэффициенты, ставки, размеры банка, edge, ответ Виктору, вопрос Марине...
+[/СЕРЖ]
+
+[МАРИНА]
+...Марина говорит 220-270 слов: физика, психология, контекст, вердикт по ставкам Сержа (✅⚠️🚫), кэшаут при каком счёте...
+[/МАРИНА]
+
+[СТАВКИ]
+[{"type":"outcome","description":"...","odds":1.85,"bankPercent":3,"confidencePercent":82},{"type":"total","description":"...","odds":1.90,"bankPercent":2,"confidencePercent":76},{"type":"handicap","description":"...","odds":1.75,"bankPercent":1,"confidencePercent":70}]
+[/СТАВКИ]`;
+
+  const userPrompt = `Матч: ${match.player1} vs ${match.player2}${match.tournament ? ` | ${match.tournament}` : ""}${match.surface ? ` | покрытие: ${match.surface}` : ""}${match.matchDate ? ` | дата: ${match.matchDate}` : ""}
+ML-коррекция истории ставок: ${mlContextText || "данных нет"}
+
+${researchContext}`;
+
   const stream = await openai.chat.completions.create({
-    model: "gpt-5.4",
-    max_completion_tokens: 8192,
+    model: "gpt-4o-mini",
+    max_tokens: 2800,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user",   content: userPrompt },
@@ -249,30 +266,119 @@ async function callGPT(systemPrompt: string, userPrompt: string, send: SSESendFn
     stream: true,
   });
 
-  let full = "";
-  for await (const chunk of stream) {
-    const text = chunk.choices[0]?.delta?.content ?? "";
-    if (text) {
-      full += text;
-      send({ type: "agent_chunk", agent: agentKey, content: text });
+  let accumulated = "";
+  let emittedUpTo = 0;
+  let activeSectionIdx = -1;
+  let activeSectionContent = "";
+  const dialogue: AgentMessage[] = [];
+  let betsJson = "";
+
+  function processBuffer(): void {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (activeSectionIdx === -1) {
+        let found = false;
+        for (let i = 0; i < AGENT_SECTIONS.length; i++) {
+          const tag = AGENT_SECTIONS[i].openTag;
+          const idx = accumulated.indexOf(tag, Math.max(0, emittedUpTo - tag.length));
+          if (idx !== -1) {
+            emittedUpTo = idx + tag.length;
+            activeSectionIdx = i;
+            activeSectionContent = "";
+            const sec = AGENT_SECTIONS[i];
+            send({ type: "agent_start", agent: sec.agent, agentLabel: sec.agentLabel, provider: "OpenAI GPT", providerModel: "gpt-4o-mini", isReply: false });
+            found = true;
+            break;
+          }
+        }
+        const betsOpenIdx = accumulated.indexOf("[СТАВКИ]", Math.max(0, emittedUpTo - 8));
+        if (!found && betsOpenIdx !== -1) {
+          emittedUpTo = betsOpenIdx + "[СТАВКИ]".length;
+          activeSectionIdx = 99;
+          found = true;
+        }
+        if (!found) break;
+      }
+
+      if (activeSectionIdx >= 0 && activeSectionIdx < AGENT_SECTIONS.length) {
+        const sec = AGENT_SECTIONS[activeSectionIdx];
+        const closeIdx = accumulated.indexOf(sec.closeTag, emittedUpTo);
+        if (closeIdx !== -1) {
+          const content = accumulated.slice(emittedUpTo, closeIdx);
+          if (content) {
+            send({ type: "agent_chunk", agent: sec.agent, content });
+            activeSectionContent += content;
+          }
+          const trimmed = activeSectionContent.trim();
+          dialogue.push({ agent: sec.agent, agentLabel: sec.agentLabel, content: trimmed, isReply: false, provider: "OpenAI GPT-4o-mini" });
+          send({ type: "agent_done", agent: sec.agent, fullContent: trimmed, agentLabel: sec.agentLabel });
+          emittedUpTo = closeIdx + sec.closeTag.length;
+          activeSectionIdx = -1;
+          activeSectionContent = "";
+        } else {
+          const safeUpTo = accumulated.length - sec.closeTag.length;
+          if (safeUpTo > emittedUpTo) {
+            const chunk = accumulated.slice(emittedUpTo, safeUpTo);
+            if (chunk) {
+              send({ type: "agent_chunk", agent: sec.agent, content: chunk });
+              activeSectionContent += chunk;
+            }
+            emittedUpTo = safeUpTo;
+          }
+          break;
+        }
+      } else if (activeSectionIdx === 99) {
+        const closeIdx = accumulated.indexOf("[/СТАВКИ]", emittedUpTo);
+        if (closeIdx !== -1) {
+          betsJson = accumulated.slice(emittedUpTo, closeIdx).trim();
+          emittedUpTo = closeIdx + "[/СТАВКИ]".length;
+          activeSectionIdx = -2;
+          break;
+        } else {
+          break;
+        }
+      } else {
+        break;
+      }
     }
   }
-  return full;
-}
 
-// ── Route each agent to its provider ─────────────────────────────────────────
-async function callAgent(
-  agentKey: string,
-  systemPrompt: string,
-  userPrompt: string,
-  send: SSESendFn,
-): Promise<string> {
-  switch (agentKey) {
-    case "stats_expert":    return callGemini(systemPrompt, userPrompt, send, agentKey);
-    case "odds_strategist": return callClaude(systemPrompt, userPrompt, send, agentKey);
-    case "context_expert":  return callGPT(systemPrompt, userPrompt, send, agentKey);
-    default:                return callGPT(systemPrompt, userPrompt, send, agentKey);
+  for await (const chunk of stream) {
+    const text = chunk.choices[0]?.delta?.content ?? "";
+    if (!text) continue;
+    accumulated += text;
+    processBuffer();
   }
+  processBuffer();
+
+  let recommendations: BettingRecommendation[] = [];
+  if (betsJson) {
+    try {
+      recommendations = JSON.parse(betsJson) as BettingRecommendation[];
+    } catch {
+      const m = betsJson.match(/\[[\s\S]*\]/);
+      if (m) {
+        try { recommendations = JSON.parse(m[0]) as BettingRecommendation[]; } catch { /* ignore */ }
+      }
+    }
+  }
+
+  const durationMs = Date.now() - startMs;
+  const estInTokens  = Math.ceil((systemPrompt.length + userPrompt.length) / 3.8);
+  const estOutTokens = Math.ceil(accumulated.length / 3.8);
+  const costUsd = (estInTokens * 0.15 + estOutTokens * 0.60) / 1_000_000;
+  const costRub = costUsd * 90;
+  logger.info({ player1: match.player1, player2: match.player2, estInTokens, estOutTokens, costUsd: `$${costUsd.toFixed(5)}`, costRub: `${costRub.toFixed(2)} руб`, durationMs: `${durationMs}ms`, model: "gpt-4o-mini" }, "💰 COST LOG agents");
+  send({ type: "cost_log", phase: "agents", costUsd, costRub, durationMs, model: "gpt-4o-mini" });
+
+  const avg = recommendations.length > 0
+    ? recommendations.reduce((s, r) => s + r.confidencePercent, 0) / recommendations.length : 0;
+  const vote = avg >= 82 ? "unanimous" : "disputed";
+  const allText = dialogue.map(d => d.content).join(" ");
+  const riskNotes = extractByKeywords(allText, ["риск", "осторожно", "опасность", "нестабил", "травм", "устал", "семей", "тренер"]);
+  const cashoutAdvice = extractByKeywords(allText, ["кэшаут", "cashout", "зафиксир", "при счёте", "выйти"]);
+
+  return { dialogue, recommendations, vote, riskNotes, cashoutAdvice };
 }
 
 // ── Main entry point ──────────────────────────────────────────────────────────
@@ -303,178 +409,24 @@ export async function runTennisAgents(
     send({ type: "ml_adjustment", adjustment: ml.adjustment, sampleSize: ml.sampleSize, sampleAccuracy: ml.sampleAccuracy });
   }
 
-  // Phase 2: Dialogue (5 turns)
-  const dialogue: AgentMessage[] = [];
+  // Phase 2: Single combined GPT-4o-mini call (all three agents in one request)
+  // Cost: ~$0.003 vs old ~$0.48 with 6 rounds of Claude+Gemini+GPT
+  send({ type: "research_progress", message: "🤝 Совещание экспертов (GPT-4o-mini, 1 запрос)..." });
+  const { dialogue, recommendations: rawRecs, vote, riskNotes, cashoutAdvice } = await runCombinedAgents(
+    match, researchContext, ml.contextText, send,
+  );
 
-  const rounds: Array<{ agentIndex: number; isReply?: boolean; isFinal?: boolean }> = [
-    { agentIndex: 0 },            // Виктор — открывает: статистика, матчап, вероятности
-    { agentIndex: 1 },            // Серж — коэффициенты, value, первые ставки
-    { agentIndex: 2 },            // Марина — психология, физика, личный контекст
-    { agentIndex: 0, isReply: true },  // Виктор — пересчёт вероятностей с учётом рисков Марины
-    { agentIndex: 1, isReply: true },  // Серж — финальные ставки с учётом всех рисков
-    { agentIndex: 2, isReply: true, isFinal: true }, // Марина — итоговый вердикт и кэшаут
-  ];
-
-  for (const round of rounds) {
-    const { agentIndex, isReply } = round;
-    const agentInfo = AGENTS[agentIndex];
-
-    send({
-      type: "agent_start",
-      agent: agentInfo.agent,
-      agentLabel: agentInfo.agentLabel,
-      provider: agentInfo.provider,
-      providerModel: agentInfo.providerModel,
-      isReply: !!isReply,
-    });
-
-    const history = dialogue.length > 0
-      ? `\n\nТЕКУЩИЙ ДИАЛОГ:\n${dialogue.map(d => `[${d.agentLabel} / ${d.provider}]: ${d.content}`).join("\n\n---\n\n")}`
-      : "";
-
-    const systemPrompt = buildSystemPrompt(agentInfo.agent, match, researchContext, ml.contextText);
-
-    // Specific reply instructions per agent role
-    const replyInstructions: Record<string, string> = {
-      stats_expert: `Виктор, твой ход — ответь на вопрос Сержа и/или Марины из диалога выше.
-Если Серж предложил ставки — дай статистическое подтверждение или опровержение его edge-оценки.
-Если Марина подняла физический/психологический риск — переведи его в цифры: как это меняет твои вероятности?
-Добавь 1 новый статистический факт, который ещё не звучал. Максимум 180 слов.`,
-
-      odds_strategist: `Серж, твой ход — ответь на вопрос Марины и учти комментарий Виктора.
-Пересмотри свои ставки с учётом психологических/физических рисков, озвученных Мариной.
-Если риск реальный — снижай рекомендуемый размер ставки или убирай позицию.
-Дай финальный список ставок с размерами (% банка). Скажи какую ставку считаешь главной и почему. Максимум 200 слов.`,
-
-      context_expert: `Марина, твой ход — ответь на вопрос Сержа.
-Дай финальный психологический вердикт: у кого в голове всё хорошо сегодня, у кого — нет.
-Есть ли что-то в личном контексте игроков, что перевешивает статистику Виктора? Максимум 190 слов.`,
-    };
-
-    const finalRoundInstruction = `Марина, ФИНАЛЬНЫЙ ВЕРДИКТ совещания.
-Ты последняя — суммируй всё что сказали Виктор и Серж через призму психологии и физики.
-
-1. ГЛАВНАЯ СТАВКА СОВЕЩАНИЯ: назови одну ставку Сержа которую ты полностью поддерживаешь — объясни почему физика и психология подтверждают.
-2. КРАСНЫЕ ФЛАГИ: если хоть один есть (усталость 7+, травма, нестабильная голова) — скажи явно какой и как снижает уверенность.
-3. СЦЕНАРИЙ МАТЧА: опиши как ты видишь ход матча по сетам — кто выйдет вперёд, где может быть перелом.
-4. КЭШАУТ: при каком счёте выходить (например "при 4:2 в первом сете в пользу X — фиксируй 50%").
-5. ИТОГОВАЯ УВЕРЕННОСТЬ всего совещания: высокая / средняя / осторожно — одним словом с объяснением.
-Максимум 200 слов.`;
-
-    const userPrompt = round.isFinal
-      ? `${history}\n\n${finalRoundInstruction}`
-      : isReply
-        ? `${history}\n\n${replyInstructions[agentInfo.agent] ?? "Твой ход — ответь на вопрос коллег. Добавь новые факты."}`
-        : `Матч: ${match.player1} vs ${match.player2}${match.tournament ? ` | ${match.tournament}` : ""}${match.surface ? ` | ${match.surface}` : ""}${history}\n\nТвой ход.`;
-
-    const fullContent = await callAgent(agentInfo.agent, systemPrompt, userPrompt, send);
-
-    dialogue.push({
-      agent: agentInfo.agent,
-      agentLabel: agentInfo.agentLabel,
-      content: fullContent,
-      isReply,
-      provider: agentInfo.provider,
-    });
-    send({ type: "agent_done", agent: agentInfo.agent, fullContent, agentLabel: agentInfo.agentLabel });
-  }
-
-  // Phase 3: Structured recommendations
-  send({ type: "generating_recommendations" });
-
-  const fatigueNote = `${match.player1}: усталость ${research.player1.fatigueScore}/10 | ${match.player2}: усталость ${research.player2.fatigueScore}/10`;
-  const mlNote = ml.adjustment !== 0
-    ? `ML-коррекция: ${ml.adjustment > 0 ? "+" : ""}${ml.adjustment}% к уверенности (история: ${ml.sampleAccuracy}% точности на ${ml.sampleSize} прогнозах).`
-    : "";
-
-  const recsResponse = await openai.chat.completions.create({
-    model: "gpt-5.4",
-    max_completion_tokens: 8192,
-    messages: [
-      {
-        role: "system",
-        content: `Ты — старший риск-аналитик беттинг-синдиката. Подводишь итог закрытого совещания трёх экспертов.
-Твоя задача: сформировать ФИНАЛЬНЫЙ беттинг-лист максимальной точности.
-
-ДАННЫЕ СОВЕЩАНИЯ:
-${fatigueNote}
-${mlNote}
-
-СТРОГИЕ ПРАВИЛА ФОРМИРОВАНИЯ СТАВОК:
-
-1. ТОЛЬКО факты из брифинга и диалога. Никаких домыслов.
-
-2. CONFIDENCEPERCENT — строгая шкала:
-   • 90-97%: ВСЕ три аналитика согласны. Данные из живого веб-поиска. Усталость обоих ≤3/10. Нет травм. Чёткое тактическое преимущество подтверждено статистикой.
-   • 82-89%: двое согласны, третий с незначительными оговорками. Данные достоверны. Усталость ≤5/10.
-   • 74-81%: двое согласны, один против ИЛИ один игрок устал 6-7/10 ИЛИ данные частично из базы знаний AI.
-   • 65-73%: разногласия между аналитиками ИЛИ усталость ≥7/10 ИЛИ подтверждённая травма ИЛИ мало данных.
-   • Ниже 65% — НЕ включай ставку в список.
-
-3. BANKPERCENT — строгие лимиты:
-   • 90%+: 3-5% банка
-   • 82-89%: 2-3% банка
-   • 74-81%: 1-2% банка
-   • 65-73%: 0.5-1% банка
-
-4. КОРРЕКЦИИ (применяй все применимые):
-   • Усталость ≥7/10 у фаворита: −7% к confidence, −1% к bankPercent
-   • Подтверждённая травма: −10% к confidence
-   • Данные из AI базы знаний (не веб-поиск): −5% к confidence
-   • ML коррекция: применяй как указано
-   • Левша против правши на грунте (специфический edge): возможен +3% если аналитики это отметили
-
-5. СТРУКТУРА ОБЯЗАТЕЛЬНА:
-   • Минимум 1 outcome (победитель матча)
-   • Минимум 1 total (тотал геймов или сетов)
-   • Минимум 1 handicap (фора по сетам или геймам)
-   • Опционально: 1 express из 2-3 наиболее уверенных исходов (bankPercent не более 1%)
-
-6. DESCRIPTION: конкретная — имена игроков, рынок, почему. Пример: "Победа Алькараса — преимущество на грунте (83% vs 61%), агрессивный форхенд подавляет защитника"
-
-Верни ТОЛЬКО JSON массив, без markdown, без комментариев:
-[
-  {
-    "type": "outcome"|"total"|"handicap"|"express",
-    "description": "...",
-    "odds": число,
-    "bankPercent": 0.5-5,
-    "confidencePercent": 65-97
-  }
-]
-Сортируй по убыванию confidencePercent.`,
-      },
-      {
-        role: "user",
-        content: `БРИФИНГ:\n${researchContext}\n\nДИАЛОГ:\n${dialogue.map(d => `[${d.agentLabel} / ${d.provider}]:\n${d.content}`).join("\n\n")}`,
-      },
-    ],
-    stream: false,
-  });
-
-  let recommendations: BettingRecommendation[] = [];
-  try {
-    const raw = recsResponse.choices[0]?.message?.content ?? "[]";
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    recommendations = JSON.parse(cleaned);
-    // Apply ML adjustment to all confidence scores
-    if (ml.adjustment !== 0) {
-      recommendations = recommendations.map(r => ({
-        ...r,
-        confidencePercent: Math.max(50, Math.min(97, r.confidencePercent + ml.adjustment)),
-      }));
-    }
-  } catch {
-    recommendations = [];
+  // Apply ML adjustment from betting history
+  let recommendations = rawRecs;
+  if (ml.adjustment !== 0 && recommendations.length > 0) {
+    recommendations = recommendations.map(r => ({
+      ...r,
+      confidencePercent: Math.max(50, Math.min(97, r.confidencePercent + ml.adjustment)),
+    }));
   }
 
   const avg = recommendations.length > 0
     ? recommendations.reduce((s, r) => s + r.confidencePercent, 0) / recommendations.length : 0;
-  const vote = avg >= 82 ? "unanimous" : "disputed";
-
-  const ctxText = dialogue.filter(d => d.agent === "context_expert").map(d => d.content).join(" ");
-  const riskNotes = extractByKeywords(ctxText, ["риск", "осторожно", "опасность", "нестабил", "травм", "устал", "семей", "тренер"]);
-  const cashoutAdvice = extractByKeywords(ctxText, ["кэшаут", "cashout", "зафиксир", "при счёте", "выйти"]);
 
   send({ type: "recommendations", data: recommendations });
   send({ type: "vote", vote, avgConfidence: Math.round(avg) });
