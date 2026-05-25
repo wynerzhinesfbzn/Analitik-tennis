@@ -45,9 +45,9 @@ interface ExpressResult {
 
 /* ── AGENT META ── */
 const AGENT_META: Record<string, { label: string; color: string; bg: string; dot: string; icon: string }> = {
-  stats_expert:    { label: "Статистик",   color: "text-blue-600 dark:text-cyan-300",    bg: "bg-blue-50 dark:bg-cyan-500/5",   dot: "bg-blue-500",   icon: "📊" },
-  odds_strategist: { label: "Стратег",     color: "text-amber-600 dark:text-amber-300",  bg: "bg-amber-50 dark:bg-amber-500/5", dot: "bg-amber-500",  icon: "💹" },
-  context_expert:  { label: "Контекст",    color: "text-purple-600 dark:text-violet-300", bg: "bg-purple-50 dark:bg-violet-500/5", dot: "bg-purple-500", icon: "🧠" },
+  stats_expert:    { label: "Виктор · Статистик", color: "text-blue-600 dark:text-cyan-300",    bg: "bg-blue-50 dark:bg-cyan-500/5",     dot: "bg-blue-500",   icon: "📊" },
+  odds_strategist: { label: "Серж · Беттор",      color: "text-amber-600 dark:text-amber-300",  bg: "bg-amber-50 dark:bg-amber-500/5",   dot: "bg-amber-500",  icon: "💰" },
+  context_expert:  { label: "Марина · Инсайдер",  color: "text-purple-600 dark:text-violet-300", bg: "bg-purple-50 dark:bg-violet-500/5", dot: "bg-purple-500", icon: "🧠" },
 };
 
 /* ── HELPERS ── */
