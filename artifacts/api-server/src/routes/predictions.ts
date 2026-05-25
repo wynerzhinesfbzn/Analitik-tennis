@@ -457,7 +457,7 @@ STYLE: ESPN/sports broadcast aesthetic, photorealistic faces, ultra-sharp 8K qua
       model: "gpt-image-1",
       prompt,
       n: 1,
-      size: "1024x1792",
+      size: "1024x1536",
       quality: "high",
     } as Parameters<typeof openai.images.generate>[0]) as { data: Array<{ b64_json?: string; url?: string }> };
 
