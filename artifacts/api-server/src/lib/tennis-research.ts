@@ -5,24 +5,74 @@ import { logger } from "../lib/logger";
 
 export interface PlayerResearch {
   name: string;
+  age: string;                    // возраст, дата рождения
+  nationality: string;            // гражданство / представляемая страна
   currentRanking: string;
+  careerHighRanking: string;      // пиковый рейтинг карьеры
+  careerTitles: string;           // количество и крупнейшие титулы (GS, M1000, etc.)
+
+  // Форма и результаты
   recentForm: string;
   last10Matches: string;
-  injuryStatus: string;
-  surfaceStats: string;
-  surfacePreference: string;
+  currentSeasonRecord: string;    // W-L в текущем сезоне
   recentTournaments: string;
-  strengths: string;
-  weaknesses: string;
+
+  // Физика и здоровье
+  injuryStatus: string;
+  physicalProfile: string;        // рост, вес, атлетический тип, выносливость vs взрыв
+  fatigueScore: number;
+  fatigueReason: string;
+  recentMatchLoad: string;
+
+  // Игровой стиль — детально
   playstyle: string;
   servingStats: string;
+  servingPatterns: string;        // куда подаёт на деuce/ad, % слайс/flat/kick
   returningStats: string;
-  // PRO extension: human factor
-  fatigueScore: number;       // 0-10 (0 = свежий, 10 = полностью измотан)
-  fatigueReason: string;      // чем объясняется оценка
-  personalContext: string;    // семья, тренер, скандалы, психология
-  recentMatchLoad: string;    // сколько матчей за последние 7/14 дней
-  coachInfo: string;          // текущий тренер, недавние смены
+  returningStyle: string;         // позиция при приёме, агрессивность
+  netPlay: string;                // % побед у сетки, как часто идёт вперёд
+  backhandType: string;           // одноручный / двуручный, сила/слабость
+  forehandRating: string;         // оценка форхенда, RPM, направления
+  movementRating: string;         // скорость первого шага, охват корта, скользание
+
+  // Покрытия — детально
+  surfaceStats: string;
+  surfacePreference: string;
+  hardCourtGame: string;          // как играет на харде конкретно (скорость, высота отскока)
+  clayCourtGame: string;          // как играет на грунте (таланти скользить, терпение)
+  grassCourtGame: string;         // как играет на траве (подача-выход, чтение отскока)
+  indoorGame: string;             // как играет в залах
+
+  // Психология — детально
+  mentalProfile: string;          // боец или ломается, как ведёт себя при 0:2 по сетам
+  tiebreakRecord: string;         // Win% в тай-брейках, история важных тай-брейков
+  decidingSetRecord: string;      // Win% в решающих сетах (3-й или 5-й)
+  comebackAbility: string;        // как часто выигрывает после проигрыша сета
+  bigMatchRecord: string;         // рекорд в финалах, полуфиналах GS, против Top-10
+  pressureHandling: string;       // поведение на сетболах, матчболах, при BreakPoints
+  motivationState: string;        // что поставлено на кон (рейтинг, защита очков, рекорд)
+
+  // Любимые / нелюбимые турниры
+  bestTournaments: string;        // где побеждал / стабильно выходит в финалы
+  poorTournaments: string;        // где стабильно уступает рано
+  performanceAtThisTournament: string; // история именно на этом турнире
+
+  // Тактика и стиль против соперников
+  vsLeftHandedRecord: string;     // рекорд против левшей
+  vsBaseliners: string;           // против типичных базелайнеров
+  vsServeVolley: string;          // против атакующих игроков сетки
+  vsHighBounce: string;           // против высокого отскока (топспин игроков)
+
+  // Слабые и сильные стороны
+  strengths: string;
+  weaknesses: string;
+  underPressureWeakness: string;  // конкретные ситуации где чаще проигрывает
+
+  // Личный контекст
+  personalContext: string;
+  coachInfo: string;
+  teamDynamics: string;           // тренерская команда, спарринги, атмосфера в команде
+  financialMotivation: string;    // призовые / рейтинговые очки на кону, контракты
 }
 
 export interface MatchResearch {
@@ -83,61 +133,86 @@ async function deleteCache(key: string): Promise<void> {
 
 // ── JSON schema ───────────────────────────────────────────────────────────────
 
+const PLAYER_SCHEMA = (name: string) => `{
+    "name": "${name}",
+    "age": "возраст и дата рождения",
+    "nationality": "страна / гражданство",
+    "currentRanking": "#N ATP/WTA на сегодня",
+    "careerHighRanking": "#N (год)",
+    "careerTitles": "N титулов: [GS: X, M1000: Y, ATP500: Z, другие]",
+
+    "recentForm": "форма за 2 месяца — W/L с именами соперников и счётами",
+    "last10Matches": "последние 10 матчей: дата | турнир | покрытие | соперник | счёт | W/L",
+    "currentSeasonRecord": "W-L в сезоне, % побед",
+    "recentTournaments": "последние 4-5 турниров с результатами",
+
+    "injuryStatus": "все травмы и болячки: конкретные, с датами, насколько серьёзно",
+    "physicalProfile": "рост, вес, физический тип (эндюранс/взрывной/универсал), хронические проблемы",
+    "fatigueScore": 0,
+    "fatigueReason": "матчей за 7 дней: N, за 14 дней: M; были ли 3-сетовые накануне; перелёты",
+    "recentMatchLoad": "матчей за 7 дней: N | за 14 дней: M | последний матч: дата",
+
+    "playstyle": "атакующий/защитный/универсальный, агрессивность 1-10, базелайнер/сетевик",
+    "servingStats": "% 1й подачи, % побед на 1й, % побед на 2й, эйсы/матч, двойные/матч",
+    "servingPatterns": "любимые зоны подачи (T/wide/body) на deuce/ad court; тип (flat/kick/slice)",
+    "returningStats": "% побед при приёме 1й, % побед при приёме 2й, % реализации брейк-пойнтов",
+    "returningStyle": "позиция при приёме (близко/далеко), агрессивность, направление",
+    "netPlay": "% побед у сетки, сколько раз в матч идёт к сетке, умение завершать",
+    "backhandType": "1-рукий / 2-рукий, мощь/стабильность, слабый удар с бэкхенда?",
+    "forehandRating": "оценка 1-10, RPM, любимые направления, winning shot или setup?",
+    "movementRating": "первый шаг 1-10, охват корта, скольжение на грунте, быстрота смены направлений",
+
+    "surfaceStats": "hard Win%: X | clay Win%: Y | grass Win%: Z | indoor Win%: W",
+    "surfacePreference": "любимое покрытие и ПОЧЕМУ (детально: особенности физики, тактики)",
+    "hardCourtGame": "как играет на харде: быстрый/медленный харт, как адаптируется",
+    "clayCourtGame": "как играет на грунте: умеет ли скользить, насколько терпелив в розыгрышах",
+    "grassCourtGame": "как играет на траве: подача-выход, адаптация к низкому отскоку",
+    "indoorGame": "как играет в зале: привычка к скорости, адаптация к условиям",
+
+    "mentalProfile": "описание психотипа: боец/ломается/нестабилен, поведение при 0:2 по сетам",
+    "tiebreakRecord": "Win% в тай-брейках, известные важные тай-брейки (выиграл/проиграл)",
+    "decidingSetRecord": "Win% в решающих сетах (3-й в best-of-3), статистика",
+    "comebackAbility": "как часто отыгрывается с 0:1 по сетам, % таких камбэков",
+    "bigMatchRecord": "рекорд в финалах GS/M1000, против Top-5, в полуфиналах major",
+    "pressureHandling": "% реализации break points, % спасения break points, поведение на матчболах",
+    "motivationState": "что на кону: защита очков, chase рейтинга, важность именно этого турнира",
+
+    "bestTournaments": "где стабильно побеждает / доходит до финалов (конкретные названия)",
+    "poorTournaments": "где стабильно уступает рано или показывает слабые результаты",
+    "performanceAtThisTournament": "история на ЭТОМ конкретном турнире: все результаты за карьеру",
+
+    "vsLeftHandedRecord": "Win% против левшей",
+    "vsBaseliners": "насколько хорошо против терпеливых базелайнеров",
+    "vsServeVolley": "насколько хорошо против атакующих сетевиков",
+    "vsHighBounce": "насколько хорошо против высокого топспина (важно на грунте)",
+
+    "strengths": "5-6 конкретных сильных сторон с примерами",
+    "weaknesses": "3-4 конкретные уязвимости с примерами матчей где это проявилось",
+    "underPressureWeakness": "конкретные ситуации/счета где чаще срывается",
+
+    "personalContext": "ВСЁ известное: семья (жена/муж/дети, недавние события), отношения с командой, скандалы, интервью о настрое, публичные заявления",
+    "coachInfo": "текущий тренер (имя), когда назначен, стиль работы, предыдущий тренер",
+    "teamDynamics": "тренерская команда (физио, спарринги), атмосфера, конфликты если были",
+    "financialMotivation": "контракты со спонсорами, бонусы за рейтинг, финансовое давление"
+  }`;
+
 const JSON_SCHEMA = (player1: string, player2: string) => `{
-  "detectedTournament": "точное название турнира (например 'Wimbledon 2025')",
+  "detectedTournament": "точное название турнира (например 'Roland Garros 2026')",
   "detectedSurface": "одно из: hard | clay | grass | indoor hard | carpet",
   "detectedDate": "YYYY-MM-DD или 'предстоящий матч'",
   "detectedRound": "стадия: 1/32, 1/16, 1/8, 1/4, полуфинал, финал, групповой и т.п.",
   "detectedLocation": "город и страна",
-  "detectedConditions": "открытый/закрытый корт, тип мячей, скорость корта, влажность/погода",
+  "detectedConditions": "открытый/закрытый корт, тип мячей, скорость корта, влажность/погода/высота над уровнем моря",
 
-  "player1": {
-    "name": "${player1}",
-    "currentRanking": "#N ATP/WTA",
-    "recentForm": "форма за 2 месяца: W/L с именами соперников",
-    "last10Matches": "10 матчей с датой, турниром, покрытием, счётом",
-    "injuryStatus": "конкретные травмы с датами или 'здоров'",
-    "surfaceStats": "hard X%, clay Y%, grass Z%, indoor W%",
-    "surfacePreference": "любимое покрытие и почему",
-    "recentTournaments": "последние 3-4 турнира с результатами",
-    "strengths": "3-4 ключевых преимущества",
-    "weaknesses": "2-3 уязвимости",
-    "playstyle": "стиль: атакующий/защитный/универсальный, агрессивность 1-10",
-    "servingStats": "% 1й подачи, % побед на 1й, % побед на 2й, эйсы/матч",
-    "returningStats": "% побед при приёме 1й/2й, % реализации брейк-пойнтов",
-    "fatigueScore": 0,
-    "fatigueReason": "объяснение оценки усталости: количество матчей за 7/14 дней, длинные матчи накануне, перелёты",
-    "personalContext": "смена тренера, семейные события (развод/рождение ребёнка), скандалы, интервью, психологическое состояние, мотивация",
-    "recentMatchLoad": "матчей за последние 7 дней: N; матчей за последние 14 дней: M",
-    "coachInfo": "текущий тренер (имя), когда назначен, предыдущий тренер если смена была"
-  },
+  "player1": ${PLAYER_SCHEMA(player1)},
+  "player2": ${PLAYER_SCHEMA(player2)},
 
-  "player2": {
-    "name": "${player2}",
-    "currentRanking": "#N ATP/WTA",
-    "recentForm": "форма за 2 месяца",
-    "last10Matches": "10 матчей",
-    "injuryStatus": "травмы или 'здоров'",
-    "surfaceStats": "hard X%, clay Y%, grass Z%, indoor W%",
-    "surfacePreference": "любимое покрытие",
-    "recentTournaments": "последние 3-4 турнира",
-    "strengths": "3-4 преимущества",
-    "weaknesses": "2-3 уязвимости",
-    "playstyle": "стиль и агрессивность 1-10",
-    "servingStats": "% подачи, эйсы",
-    "returningStats": "% приёма, % брейков",
-    "fatigueScore": 0,
-    "fatigueReason": "объяснение оценки усталости",
-    "personalContext": "тренер, семья, психология, мотивация",
-    "recentMatchLoad": "матчей за 7 дней: N; матчей за 14 дней: M",
-    "coachInfo": "текущий тренер и история"
-  },
-
-  "h2hHistory": "общий счёт, ВСЕ матчи: дата, турнир, покрытие, счёт",
-  "h2hOnSurface": "h2h только на покрытии этого матча",
-  "tournamentContext": "категория (GS/M1000/ATP500), призовые, рейтинговые очки, важность для каждого",
-  "marketAnalysis": "диапазон коэффициентов, кто фаворит, имплицитные вероятности, расхождения",
-  "keyFactors": "8-10 конкретных факторов: подача, форма, h2h, физика, психология, условия"
+  "h2hHistory": "общий счёт W-L, ВСЕ встречи: дата | турнир | покрытие | счёт | кто выиграл",
+  "h2hOnSurface": "h2h ТОЛЬКО на покрытии этого матча, с конкретными матчами",
+  "h2hStyleDynamic": "тактическая динамика встреч: кто доминирует в каких ситуациях, ключевые моменты противостояния",
+  "tournamentContext": "категория (GS/M1000/ATP500/250), призовые, рейтинговые очки, значимость для каждого",
+  "marketAnalysis": "диапазон коэффициентов у топ-5 букмекеров, кто фаворит, имплицитные вероятности, подозрительные движения линии",
+  "keyFactors": "10-12 конкретных факторов которые решат матч: подача, форма, h2h, физика, психология, условия, покрытие, мотивация"
 }`;
 
 // ── Web search research (OpenAI with web_search_preview tool) ─────────────────
@@ -157,31 +232,83 @@ async function tryWebSearchResearch(
       hintDate       && `дата: ${hintDate}`,
     ].filter(Boolean).join("; ");
 
-    const input = `Сегодня ${today}. Ты — ведущий теннисный аналитик с 50-летним опытом.
-Проведи МАКСИМАЛЬНО глубокий анализ матча: ${player1} vs ${player2}.
-${hints ? `Подсказки: ${hints}` : "Турнир/покрытие/дата не указаны — определи сам."}
+    const input = `Сегодня ${today}. Ты — профессиональный теннисный скаут и аналитик беттинг-синдиката.
+Проведи ПОЛНЫЙ ДОСЬЕ-АНАЛИЗ матча: ${player1} vs ${player2}.
+${hints ? `Данные матча: ${hints}` : "Турнир/покрытие/дата не указаны — определи сам по последним новостям."}
 
-Используй web_search для поиска СЛЕДУЮЩИХ ДАННЫХ (всё важно):
+Используй web_search МНОГОКРАТНО для сбора ПОЛНОГО ДОСЬЕ по каждому игроку и матчу.
 
-1. МАТЧ: точное название турнира, дата, стадия, город, покрытие, условия
-2. ДЛЯ КАЖДОГО ИГРОКА:
-   • Рейтинг ATP/WTA сегодня
-   • Форма за 2 месяца (W/L, конкретные матчи)
-   • Win% на всех покрытиях (hard/clay/grass/indoor)
-   • Стиль игры, подача/приём (проценты, эйсы)
-   • Последние 10 матчей с счётами
-   • ТРАВМЫ (любые новости за последние 2 недели, пресс-конференции)
-   • УСТАЛОСТЬ: сколько матчей за последние 7 дней и 14 дней? Были ли длинные матчи накануне (3+ сета)? Переезды?
-   • ЛИЧНАЯ ЖИЗНЬ: смена тренера (когда, кто), семейные события (рождение ребёнка, развод), скандалы, интервью о мотивации, психологическое состояние
-   • НАГРУЗКА: количество турниров за последние 30 дней
-   • Текущий тренер и история с тренерами
-3. H2H: общий счёт, все матчи с датой/турниром/покрытием/счётом; h2h на этом покрытии
-4. КОНТЕКСТ: категория турнира, призовые, рейтинговые очки, важность для каждого игрока
-5. РЫНОК: коэффициенты букмекеров, кто фаворит, где расхождение с реальным балансом сил
+═══ БЛОК 1: МАТЧ ═══
+• Точное название турнира, дата, стадия, город, страна
+• Тип покрытия и его характеристики (скорость, отскок, условия)
+• Открытый/закрытый корт, погода, высота над уровнем моря
 
-На основе УСТАЛОСТИ рассчитай fatigueScore (0-10) для каждого:
-0 = полностью свеж, 5 = умеренно устал, 10 = полностью измотан
-Учитывай: матчи за последние 7 дней, длинные матчи (3+ сета), перелёты, гестральные показатели.
+═══ БЛОК 2: ПОЛНОЕ ДОСЬЕ КАЖДОГО ИГРОКА ═══
+Для ${player1} И ${player2} найди ВСЁ:
+
+БИОГРАФИЯ И КАРЬЕРА:
+• Возраст, гражданство, рост, вес
+• Пиковый рейтинг карьеры, год
+• Количество и список крупнейших титулов (Grand Slam, Masters 1000, ATP/WTA 500)
+• Текущий рейтинг и рекорд сезона W-L
+
+ФОРМА И РЕЗУЛЬТАТЫ:
+• Последние 10 матчей с датой, турниром, покрытием, соперником, счётом
+• Форма за последние 2 месяца
+• Результаты на последних 4-5 турнирах
+
+ФИЗИЧЕСКОЕ СОСТОЯНИЕ:
+• Все актуальные травмы и болячки (ищи пресс-конференции, официальные заявления)
+• Хронические проблемы со здоровьем
+• Сколько матчей за 7 дней и 14 дней — ПОСЧИТАЙ
+• Были ли 3-сетовые матчи за последние 72 часа?
+• Перелёты и смены часовых поясов перед турниром
+• fatigueScore (0-10): 0=свеж, 10=измотан
+
+ИГРОВОЙ СТИЛЬ — ДЕТАЛЬНО:
+• Стиль: атакующий/защитный/универсальный
+• Подача: % попадания 1-й, % побед на 1-й/2-й, эйсы/матч, двойные/матч
+• Паттерны подачи: куда подаёт на deuce court (T/wide/body), на ad court
+• Приём: позиция, % побед при приёме 1-й/2-й, % конвертации брейк-пойнтов
+• Бэкхенд: одноручный/двуручный, сила/уязвимость
+• Форхенд: оценка, RPM, победный удар или setup?
+• Игра у сетки: как часто идёт, % побед
+• Передвижение: первый шаг, охват, скольжение
+
+ПОКРЫТИЯ — ДЕТАЛЬНО:
+• Win% на hard/clay/grass/indoor (последние 2-3 года)
+• Любимое покрытие и почему тактически
+• Как конкретно играет на каждом покрытии
+
+ПСИХОЛОГИЯ — ДЕТАЛЬНО:
+• Win% в тай-брейках
+• Win% в решающих сетах
+• Как ведёт себя при 0:1 по сетам (камбэк или сдаётся)
+• Рекорд в финалах / полуфиналах GS и M1000
+• Поведение на матчболах и сетболах против него
+• Психотип: боец, стабильный, нервный
+
+ЛЮБИМЫЕ И НЕЛЮБИМЫЕ ТУРНИРЫ:
+• Где стабильно побеждает / доходит до поздних стадий (конкретные турниры)
+• Где стабильно уступает рано
+• История именно на ЭТОМ турнире за карьеру
+
+ДОПОЛНИТЕЛЬНЫЕ ФАКТОРЫ:
+• Win% против левшей / правшей
+• Против каких стилей игры проигрывает чаще
+• Текущий тренер (имя, когда назначен, предыдущий тренер)
+• Семья: супруга/партнёр, дети, недавние семейные события
+• Психологическое состояние: интервью, заявления, мотивация
+• Финансовая мотивация: защита очков, гонка за рейтингом, спонсорские бонусы
+
+═══ БЛОК 3: ПРОТИВОСТОЯНИЕ (H2H) ═══
+• Общий счёт W-L, все встречи: дата | турнир | покрытие | счёт | победитель
+• H2H только на данном покрытии
+• Тактическая динамика: кто доминирует в каких ситуациях
+
+═══ БЛОК 4: КОНТЕКСТ И РЫНОК ═══
+• Категория и важность турнира для каждого (защита очков, рейтинг, мотивация)
+• Коэффициенты у ведущих букмекеров, имплицитные вероятности
 
 Верни ТОЛЬКО JSON без markdown, точно по схеме:
 ${JSON_SCHEMA(player1, player2)}`;
@@ -235,17 +362,23 @@ async function knowledgeBasedResearch(
     hintDate       && `Дата: ${hintDate}`,
   ].filter(Boolean).join("\n");
 
-  const prompt = `Ты — ведущий теннисный аналитик с 50-летним опытом.
-Проведи глубокий анализ матча ${player1} vs ${player2}.
+  const prompt = `Ты — профессиональный теннисный скаут с 25-летним опытом работы в беттинг-синдикатах.
+Составь ПОЛНОЕ ДОСЬЕ на матч ${player1} vs ${player2}.
 
-${hints || "Параметры матча не указаны — определи наиболее вероятные."}
+${hints || "Параметры матча не указаны — определи наиболее вероятные по известным данным."}
 
-ТРЕБОВАНИЯ:
-- Только реальные факты (срез знаний — начало 2026).
-- Конкретные числа: рейтинги, win%, счета h2h, эйсы/матч.
-- Оцени fatigueScore (0-10) на основе известных данных об игровом графике.
-- Для personalContext — упомяни известные события (тренеры, семья, интервью).
-- Заполни ВСЕ поля.
+ТРЕБОВАНИЯ (срез знаний — начало 2026, используй всё что знаешь):
+• Биография, возраст, физический профиль каждого
+• Рейтинг, пиковый рейтинг, карьерные титулы — с конкретными числами
+• W-L на каждом покрытии (hard/clay/grass/indoor)
+• Стиль игры в деталях: подача, приём, бэкхенд/форхенд, сетка, движение
+• Психология: тай-брейки, решающие сеты, камбэки, большие матчи — все Win%
+• Лучшие и худшие турниры в карьере
+• История на этом конкретном турнире
+• H2H: все матчи с датами и счётами
+• Тренер, семья, известные события из личной жизни
+• Мотивация: что поставлено на кон в этом матче
+• Заполни КАЖДОЕ поле конкретными данными, не пиши "нет данных"
 
 Верни ТОЛЬКО JSON без markdown:
 ${JSON_SCHEMA(player1, player2)}`;
@@ -285,23 +418,56 @@ function emptyResearch(
 ): MatchResearch {
   const blankPlayer = (name: string): PlayerResearch => ({
     name,
-    currentRanking: "данные уточняются",
+    age: "—",
+    nationality: "—",
+    currentRanking: "уточняется",
+    careerHighRanking: "—",
+    careerTitles: "—",
     recentForm: "анализируется",
     last10Matches: "анализируется",
-    injuryStatus: "нет данных",
-    surfaceStats: "анализируется",
-    surfacePreference: "анализируется",
+    currentSeasonRecord: "—",
     recentTournaments: "анализируется",
-    strengths: "анализируется",
-    weaknesses: "анализируется",
-    playstyle: "анализируется",
-    servingStats: "анализируется",
-    returningStats: "анализируется",
+    injuryStatus: "нет данных",
+    physicalProfile: "—",
     fatigueScore: 0,
     fatigueReason: "нет данных",
-    personalContext: "нет данных",
     recentMatchLoad: "нет данных",
+    playstyle: "анализируется",
+    servingStats: "анализируется",
+    servingPatterns: "—",
+    returningStats: "анализируется",
+    returningStyle: "—",
+    netPlay: "—",
+    backhandType: "—",
+    forehandRating: "—",
+    movementRating: "—",
+    surfaceStats: "анализируется",
+    surfacePreference: "анализируется",
+    hardCourtGame: "—",
+    clayCourtGame: "—",
+    grassCourtGame: "—",
+    indoorGame: "—",
+    mentalProfile: "—",
+    tiebreakRecord: "—",
+    decidingSetRecord: "—",
+    comebackAbility: "—",
+    bigMatchRecord: "—",
+    pressureHandling: "—",
+    motivationState: "—",
+    bestTournaments: "—",
+    poorTournaments: "—",
+    performanceAtThisTournament: "—",
+    vsLeftHandedRecord: "—",
+    vsBaseliners: "—",
+    vsServeVolley: "—",
+    vsHighBounce: "—",
+    strengths: "анализируется",
+    weaknesses: "анализируется",
+    underPressureWeakness: "—",
+    personalContext: "нет данных",
     coachInfo: "нет данных",
+    teamDynamics: "—",
+    financialMotivation: "—",
   });
   return {
     detectedTournament: hintTournament ?? "не определено",
@@ -417,67 +583,110 @@ export function buildResearchContext(research: MatchResearch): string {
   const p2 = research.player2;
 
   const fatigueLabel = (score: number) =>
-    score <= 2 ? "свеж" : score <= 4 ? "умеренно устал" : score <= 6 ? "устал" : score <= 8 ? "сильно устал" : "критически измотан";
+    score <= 2 ? "🟢 свеж" : score <= 4 ? "🟡 умеренно устал" : score <= 6 ? "🟠 устал" : score <= 8 ? "🔴 сильно устал" : "🚨 критически измотан";
 
-  return `═══════════════════════════════════════
-АНАЛИТИЧЕСКИЙ БРИФИНГ — ПОЛНЫЕ ДАННЫЕ
-═══════════════════════════════════════
+  const playerBlock = (p: PlayerResearch) => `
+  ━━━ ДОСЬЕ: ${p.name.toUpperCase()} ━━━
+  Возраст/гражданство: ${p.age} | ${p.nationality}
+  Рейтинг: ${p.currentRanking} | Пиковый: ${p.careerHighRanking}
+  Карьерные титулы: ${p.careerTitles}
+  Рекорд сезона: ${p.currentSeasonRecord}
+  Физический профиль: ${p.physicalProfile}
 
-▶ МАТЧ
-• Турнир: ${research.detectedTournament}
-• Покрытие: ${research.detectedSurface}
-• Дата: ${research.detectedDate}
-• Стадия: ${research.detectedRound}
-• Локация: ${research.detectedLocation}
-• Условия: ${research.detectedConditions}
+  📊 ФОРМА И РЕЗУЛЬТАТЫ
+  Форма (2 мес): ${p.recentForm}
+  Последние 10 матчей:
+  ${p.last10Matches}
+  Последние турниры: ${p.recentTournaments}
 
-▶ ${p1.name.toUpperCase()}  [рейтинг: ${p1.currentRanking}]
-• Форма: ${p1.recentForm}
-• Последние 10 матчей: ${p1.last10Matches}
-• Травмы / физсостояние: ${p1.injuryStatus}
-• Win% на покрытиях: ${p1.surfaceStats}
-• Любимое покрытие: ${p1.surfacePreference}
-• Последние турниры: ${p1.recentTournaments}
-• Нагрузка за 7/14 дней: ${p1.recentMatchLoad}
-• Стиль игры: ${p1.playstyle}
-• Подача: ${p1.servingStats}
-• Приём: ${p1.returningStats}
-• Сильные стороны: ${p1.strengths}
-• Слабые стороны: ${p1.weaknesses}
-• УСТАЛОСТЬ: ${p1.fatigueScore}/10 (${fatigueLabel(p1.fatigueScore)}) — ${p1.fatigueReason}
-• ЛИЧНЫЙ КОНТЕКСТ: ${p1.personalContext}
-• Тренер: ${p1.coachInfo}
+  🏥 ФИЗИЧЕСКОЕ СОСТОЯНИЕ
+  Травмы: ${p.injuryStatus}
+  Нагрузка: ${p.recentMatchLoad}
+  ⚡ УСТАЛОСТЬ: ${p.fatigueScore}/10 (${fatigueLabel(p.fatigueScore)})
+  Причина: ${p.fatigueReason}
 
-▶ ${p2.name.toUpperCase()}  [рейтинг: ${p2.currentRanking}]
-• Форма: ${p2.recentForm}
-• Последние 10 матчей: ${p2.last10Matches}
-• Травмы / физсостояние: ${p2.injuryStatus}
-• Win% на покрытиях: ${p2.surfaceStats}
-• Любимое покрытие: ${p2.surfacePreference}
-• Последние турниры: ${p2.recentTournaments}
-• Нагрузка за 7/14 дней: ${p2.recentMatchLoad}
-• Стиль игры: ${p2.playstyle}
-• Подача: ${p2.servingStats}
-• Приём: ${p2.returningStats}
-• Сильные стороны: ${p2.strengths}
-• Слабые стороны: ${p2.weaknesses}
-• УСТАЛОСТЬ: ${p2.fatigueScore}/10 (${fatigueLabel(p2.fatigueScore)}) — ${p2.fatigueReason}
-• ЛИЧНЫЙ КОНТЕКСТ: ${p2.personalContext}
-• Тренер: ${p2.coachInfo}
+  🎾 ИГРОВОЙ СТИЛЬ
+  Стиль: ${p.playstyle}
+  Подача: ${p.servingStats}
+  Паттерны подачи: ${p.servingPatterns}
+  Приём: ${p.returningStats}
+  Стиль приёма: ${p.returningStyle}
+  Игра у сетки: ${p.netPlay}
+  Бэкхенд: ${p.backhandType}
+  Форхенд: ${p.forehandRating}
+  Передвижение: ${p.movementRating}
 
-▶ ЛИЧНЫЕ ВСТРЕЧИ (H2H)
-${research.h2hHistory}
+  🏟️ ПОКРЫТИЯ
+  Win% по покрытиям: ${p.surfaceStats}
+  Любимое покрытие: ${p.surfacePreference}
+  На харде: ${p.hardCourtGame}
+  На грунте: ${p.clayCourtGame}
+  На траве: ${p.grassCourtGame}
+  В зале: ${p.indoorGame}
 
-▶ H2H НА ЭТОМ ПОКРЫТИИ
-${research.h2hOnSurface}
+  🧠 ПСИХОЛОГИЯ
+  Психотип: ${p.mentalProfile}
+  Тай-брейки: ${p.tiebreakRecord}
+  Решающие сеты: ${p.decidingSetRecord}
+  Камбэки (после потери сета): ${p.comebackAbility}
+  В больших матчах (финалы/GS/vs Top-10): ${p.bigMatchRecord}
+  Под давлением (BP/сетболы): ${p.pressureHandling}
+  Мотивация сейчас: ${p.motivationState}
+  Слабости под давлением: ${p.underPressureWeakness}
 
-▶ КОНТЕКСТ ТУРНИРА
-${research.tournamentContext}
+  🏆 ТУРНИРНАЯ ИСТОРИЯ
+  Лучшие турниры: ${p.bestTournaments}
+  Слабые турниры: ${p.poorTournaments}
+  На ЭТОМ турнире: ${p.performanceAtThisTournament}
 
-▶ РЫНОЧНЫЙ АНАЛИЗ
-${research.marketAnalysis}
+  🔄 ПРОТИВ РАЗНЫХ СТИЛЕЙ
+  Vs левши: ${p.vsLeftHandedRecord}
+  Vs базелайнеры: ${p.vsBaseliners}
+  Vs атакующие/сетевики: ${p.vsServeVolley}
+  Vs высокий топспин: ${p.vsHighBounce}
 
-▶ КЛЮЧЕВЫЕ ФАКТОРЫ
-${research.keyFactors}
-═══════════════════════════════════════`;
+  ✅ СИЛЬНЫЕ СТОРОНЫ: ${p.strengths}
+  ❌ СЛАБЫЕ СТОРОНЫ: ${p.weaknesses}
+
+  👤 ЛИЧНЫЙ КОНТЕКСТ
+  Тренер: ${p.coachInfo}
+  Команда: ${p.teamDynamics}
+  Личная жизнь: ${p.personalContext}
+  Финансовая мотивация: ${p.financialMotivation}`;
+
+  return `
+╔══════════════════════════════════════════════════════╗
+║         ПОЛНЫЙ ДОСЬЕ-БРИФИНГ ДЛЯ СОВЕЩАНИЯ          ║
+╚══════════════════════════════════════════════════════╝
+
+📍 МАТЧ
+  Турнир: ${research.detectedTournament}
+  Покрытие: ${research.detectedSurface}
+  Дата: ${research.detectedDate}  |  Стадия: ${research.detectedRound}
+  Локация: ${research.detectedLocation}
+  Условия: ${research.detectedConditions}
+
+${playerBlock(p1)}
+
+${playerBlock(p2)}
+
+⚔️ H2H — ЛИЧНЫЕ ВСТРЕЧИ
+  Общий счёт: ${research.h2hHistory}
+
+  На этом покрытии:
+  ${research.h2hOnSurface}
+
+  Тактическая динамика:
+  ${"h2hStyleDynamic" in research ? (research as any).h2hStyleDynamic : "—"}
+
+🏟️ КОНТЕКСТ ТУРНИРА
+  ${research.tournamentContext}
+
+📈 РЫНОЧНЫЙ АНАЛИЗ
+  ${research.marketAnalysis}
+
+🔑 КЛЮЧЕВЫЕ ФАКТОРЫ МАТЧА
+  ${research.keyFactors}
+
+══════════════════════════════════════════════════════`.trim();
 }
