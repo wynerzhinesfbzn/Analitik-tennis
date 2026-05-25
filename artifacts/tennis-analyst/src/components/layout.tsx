@@ -43,7 +43,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const navItems = [
     { href: "/", label: "Анализ", icon: Activity },
     { href: "/history", label: "История", icon: History },
-    { href: "/git-push", label: "GitHub", icon: TrendingUp },
+    { href: "/git-push", label: "GitHub", icon: Github },
   ];
 
   return (
