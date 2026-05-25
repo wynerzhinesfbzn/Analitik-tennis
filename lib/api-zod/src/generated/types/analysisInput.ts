@@ -15,4 +15,6 @@ export interface AnalysisInput {
   matchDate?: string;
   /** Odds data extracted from bookmaker */
   odds?: AnalysisInputOdds;
+  /** Skip search cache and force fresh web search */
+  forceRefresh?: boolean;
 }

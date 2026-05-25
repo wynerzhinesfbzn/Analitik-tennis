@@ -166,6 +166,74 @@ paths:
           content:
             text/event-stream: {}
 
+  /predictions/ml-stats:
+    get:
+      operationId: getPredictionMLStats
+      tags: [predictions]
+      summary: Get ML stats and Telegram configuration status
+      responses:
+        "200":
+          description: ML stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MLStats"
+
+  /predictions/check-results:
+    post:
+      operationId: checkPredictionResults
+      tags: [predictions]
+      summary: Auto-check match results via ESPN/AI and update predictions
+      responses:
+        "200":
+          description: Results checked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckResultsResponse"
+
+  /predictions/{id}/telegram:
+    post:
+      operationId: publishPredictionToTelegram
+      tags: [predictions]
+      summary: Publish a prediction to Telegram channel
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramPublishResult"
+        "503":
+          description: Telegram not configured
+
+  /predictions/{id}/telegram-result:
+    patch:
+      operationId: updateTelegramPredictionResult
+      tags: [predictions]
+      summary: Update Telegram message with match result
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PredictionResultUpdate"
+      responses:
+        "200":
+          description: Updated
+
   /predictions/analyze-image:
     post:
       operationId: analyzeBookmakerImage
@@ -420,6 +488,18 @@ components:
         createdAt:
           type: string
           format: date-time
+        fatigueScore1:
+          type: ["integer", "null"]
+          description: Fatigue score 0-10 for player1
+        fatigueScore2:
+          type: ["integer", "null"]
+          description: Fatigue score 0-10 for player2
+        mlAdjustment:
+          type: ["integer", "null"]
+          description: ML-based confidence adjustment in percentage points
+        telegramMessageId:
+          type: ["string", "null"]
+          description: Telegram message ID if published
       required:
         - id
         - player1
@@ -494,6 +574,51 @@ components:
         - accuracy
         - recentPredictions
 
+    MLStats:
+      type: object
+      properties:
+        overall:
+          type: object
+          additionalProperties: true
+        bySurface:
+          type: object
+          additionalProperties: true
+        telegramConfigured:
+          type: boolean
+      required:
+        - overall
+        - bySurface
+        - telegramConfigured
+
+    CheckResultsResponse:
+      type: object
+      properties:
+        checked:
+          type: integer
+        updated:
+          type: integer
+        outcomes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required:
+        - checked
+        - updated
+        - outcomes
+
+    TelegramPublishResult:
+      type: object
+      properties:
+        messageId:
+          type: integer
+        published:
+          type: boolean
+        alreadyPublished:
+          type: boolean
+      required:
+        - messageId
+
     AnalysisInput:
       type: object
       properties:
@@ -511,6 +636,9 @@ components:
           type: object
           description: Odds data extracted from bookmaker
           additionalProperties: true
+        forceRefresh:
+          type: boolean
+          description: Skip search cache and force fresh web search
       required:
         - player1
         - player2

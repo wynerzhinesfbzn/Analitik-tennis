@@ -60,8 +60,8 @@ router.post("/predictions/analyze", async (req, res): Promise<void> => {
   };
 
   try {
-    const { dialogue, recommendations, vote, riskNotes, cashoutAdvice } = await runTennisAgents(
-      parsed.data,
+    const { dialogue, recommendations, vote, riskNotes, cashoutAdvice, fatigueScore1, fatigueScore2, mlAdjustment } = await runTennisAgents(
+      { ...parsed.data, forceRefresh: (req.body as Record<string, unknown>).forceRefresh === true },
       send
     );
 
@@ -76,6 +76,9 @@ router.post("/predictions/analyze", async (req, res): Promise<void> => {
       riskNotes: riskNotes || null,
       cashoutAdvice: cashoutAdvice || null,
       agentVote: vote,
+      fatigueScore1: fatigueScore1 ?? null,
+      fatigueScore2: fatigueScore2 ?? null,
+      mlAdjustment: mlAdjustment ?? null,
     }).returning();
 
     send({ type: "saved", prediction: formatPrediction(saved) });

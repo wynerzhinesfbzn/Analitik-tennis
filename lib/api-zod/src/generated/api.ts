@@ -34,7 +34,11 @@ export const ListPredictionsResponseItem = zod.object({
   "agentVote": zod.string().nullish().describe('Voting result: unanimous or disputed'),
   "actualResult": zod.string().nullish().describe('Actual match result entered by user'),
   "isCorrect": zod.boolean().nullish().describe('Whether the top prediction was correct'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "fatigueScore1": zod.number().nullish().describe('Fatigue score 0-10 for player1'),
+  "fatigueScore2": zod.number().nullish().describe('Fatigue score 0-10 for player2'),
+  "mlAdjustment": zod.number().nullish().describe('ML-based confidence adjustment in percentage points'),
+  "telegramMessageId": zod.string().nullish().describe('Telegram message ID if published')
 })
 export const ListPredictionsResponse = zod.array(ListPredictionsResponseItem)
 
@@ -77,7 +81,11 @@ export const GetPredictionResponse = zod.object({
   "agentVote": zod.string().nullish().describe('Voting result: unanimous or disputed'),
   "actualResult": zod.string().nullish().describe('Actual match result entered by user'),
   "isCorrect": zod.boolean().nullish().describe('Whether the top prediction was correct'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "fatigueScore1": zod.number().nullish().describe('Fatigue score 0-10 for player1'),
+  "fatigueScore2": zod.number().nullish().describe('Fatigue score 0-10 for player2'),
+  "mlAdjustment": zod.number().nullish().describe('ML-based confidence adjustment in percentage points'),
+  "telegramMessageId": zod.string().nullish().describe('Telegram message ID if published')
 })
 
 
@@ -115,7 +123,11 @@ export const UpdatePredictionResultResponse = zod.object({
   "agentVote": zod.string().nullish().describe('Voting result: unanimous or disputed'),
   "actualResult": zod.string().nullish().describe('Actual match result entered by user'),
   "isCorrect": zod.boolean().nullish().describe('Whether the top prediction was correct'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "fatigueScore1": zod.number().nullish().describe('Fatigue score 0-10 for player1'),
+  "fatigueScore2": zod.number().nullish().describe('Fatigue score 0-10 for player2'),
+  "mlAdjustment": zod.number().nullish().describe('ML-based confidence adjustment in percentage points'),
+  "telegramMessageId": zod.string().nullish().describe('Telegram message ID if published')
 })
 
 
@@ -142,7 +154,11 @@ export const GetPredictionStatsResponse = zod.object({
   "agentVote": zod.string().nullish().describe('Voting result: unanimous or disputed'),
   "actualResult": zod.string().nullish().describe('Actual match result entered by user'),
   "isCorrect": zod.boolean().nullish().describe('Whether the top prediction was correct'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "fatigueScore1": zod.number().nullish().describe('Fatigue score 0-10 for player1'),
+  "fatigueScore2": zod.number().nullish().describe('Fatigue score 0-10 for player2'),
+  "mlAdjustment": zod.number().nullish().describe('ML-based confidence adjustment in percentage points'),
+  "telegramMessageId": zod.string().nullish().describe('Telegram message ID if published')
 }))
 })
 
@@ -156,7 +172,55 @@ export const AnalyzeTennisMatchBody = zod.object({
   "tournament": zod.string().optional(),
   "surface": zod.string().optional(),
   "matchDate": zod.string().optional(),
-  "odds": zod.record(zod.string(), zod.unknown()).optional().describe('Odds data extracted from bookmaker')
+  "odds": zod.record(zod.string(), zod.unknown()).optional().describe('Odds data extracted from bookmaker'),
+  "forceRefresh": zod.boolean().optional().describe('Skip search cache and force fresh web search')
+})
+
+
+/**
+ * @summary Get ML stats and Telegram configuration status
+ */
+export const GetPredictionMLStatsResponse = zod.object({
+  "overall": zod.record(zod.string(), zod.unknown()),
+  "bySurface": zod.record(zod.string(), zod.unknown()),
+  "telegramConfigured": zod.boolean()
+})
+
+
+/**
+ * @summary Auto-check match results via ESPN/AI and update predictions
+ */
+export const CheckPredictionResultsResponse = zod.object({
+  "checked": zod.number(),
+  "updated": zod.number(),
+  "outcomes": zod.array(zod.record(zod.string(), zod.unknown()))
+})
+
+
+/**
+ * @summary Publish a prediction to Telegram channel
+ */
+export const PublishPredictionToTelegramParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PublishPredictionToTelegramResponse = zod.object({
+  "messageId": zod.number(),
+  "published": zod.boolean().optional(),
+  "alreadyPublished": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Update Telegram message with match result
+ */
+export const UpdateTelegramPredictionResultParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateTelegramPredictionResultBody = zod.object({
+  "actualResult": zod.string(),
+  "isCorrect": zod.boolean()
 })
 
 

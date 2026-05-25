@@ -75,6 +75,26 @@ export interface Prediction {
      */
   isCorrect?: boolean | null;
   createdAt: string;
+  /**
+     * Fatigue score 0-10 for player1
+     * @nullable
+     */
+  fatigueScore1?: number | null;
+  /**
+     * Fatigue score 0-10 for player2
+     * @nullable
+     */
+  fatigueScore2?: number | null;
+  /**
+     * ML-based confidence adjustment in percentage points
+     * @nullable
+     */
+  mlAdjustment?: number | null;
+  /**
+     * Telegram message ID if published
+     * @nullable
+     */
+  telegramMessageId?: string | null;
 }
 
 export interface PredictionInput {
@@ -105,6 +125,30 @@ export interface PredictionStats {
   recentPredictions: Prediction[];
 }
 
+export type MLStatsOverall = { [key: string]: unknown };
+
+export type MLStatsBySurface = { [key: string]: unknown };
+
+export interface MLStats {
+  overall: MLStatsOverall;
+  bySurface: MLStatsBySurface;
+  telegramConfigured: boolean;
+}
+
+export type CheckResultsResponseOutcomesItem = { [key: string]: unknown };
+
+export interface CheckResultsResponse {
+  checked: number;
+  updated: number;
+  outcomes: CheckResultsResponseOutcomesItem[];
+}
+
+export interface TelegramPublishResult {
+  messageId: number;
+  published?: boolean;
+  alreadyPublished?: boolean;
+}
+
 /**
  * Odds data extracted from bookmaker
  */
@@ -118,6 +162,8 @@ export interface AnalysisInput {
   matchDate?: string;
   /** Odds data extracted from bookmaker */
   odds?: AnalysisInputOdds;
+  /** Skip search cache and force fresh web search */
+  forceRefresh?: boolean;
 }
 
 export interface ImageAnalysisInput {

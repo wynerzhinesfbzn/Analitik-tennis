@@ -40,4 +40,24 @@ export interface Prediction {
      */
   isCorrect?: boolean | null;
   createdAt: Date;
+  /**
+     * Fatigue score 0-10 for player1
+     * @nullable
+     */
+  fatigueScore1?: number | null;
+  /**
+     * Fatigue score 0-10 for player2
+     * @nullable
+     */
+  fatigueScore2?: number | null;
+  /**
+     * ML-based confidence adjustment in percentage points
+     * @nullable
+     */
+  mlAdjustment?: number | null;
+  /**
+     * Telegram message ID if published
+     * @nullable
+     */
+  telegramMessageId?: string | null;
 }

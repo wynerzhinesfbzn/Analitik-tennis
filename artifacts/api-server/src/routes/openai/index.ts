@@ -207,7 +207,7 @@ router.post("/openai/conversations/:id/voice-messages", async (req, res): Promis
 
   for await (const event of stream) {
     if (event.type === "transcript") assistantTranscript += event.data;
-    if (event.type === "user_transcript") userTranscript += event.data;
+    if ((event as { type: string; data?: string }).type === "user_transcript") userTranscript += (event as any).data ?? "";
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   }
 

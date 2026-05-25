@@ -1,4 +1,4 @@
-import { pgTable, text, serial, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -17,6 +17,12 @@ export const predictionsTable = pgTable("predictions", {
   actualResult: text("actual_result"),
   isCorrect: boolean("is_correct"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // PRO extension fields
+  fatigueScore1: integer("fatigue_score1"),
+  fatigueScore2: integer("fatigue_score2"),
+  mlAdjustment: integer("ml_adjustment"),
+  telegramMessageId: text("telegram_message_id"),
+  deepSearchData: text("deep_search_data"),
 });
 
 export const insertPredictionSchema = createInsertSchema(predictionsTable).omit({ id: true, createdAt: true });

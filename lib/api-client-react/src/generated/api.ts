@@ -21,10 +21,12 @@ import type {
 
 import type {
   AnalysisInput,
+  CheckResultsResponse,
   ErrorResponse,
   HealthStatus,
   ImageAnalysisInput,
   ImageAnalysisResult,
+  MLStats,
   OpenaiConversation,
   OpenaiConversationInput,
   OpenaiConversationWithMessages,
@@ -35,7 +37,8 @@ import type {
   Prediction,
   PredictionInput,
   PredictionResultUpdate,
-  PredictionStats
+  PredictionStats,
+  TelegramPublishResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -641,6 +644,295 @@ export const useAnalyzeTennisMatch = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getAnalyzeTennisMatchMutationOptions(options));
+    }
+
+export const getGetPredictionMLStatsUrl = () => {
+
+
+
+
+  return `/api/predictions/ml-stats`
+}
+
+/**
+ * @summary Get ML stats and Telegram configuration status
+ */
+export const getPredictionMLStats = async ( options?: RequestInit): Promise<MLStats> => {
+
+  return customFetch<MLStats>(getGetPredictionMLStatsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPredictionMLStatsQueryKey = () => {
+    return [
+    `/api/predictions/ml-stats`
+    ] as const;
+    }
+
+
+export const getGetPredictionMLStatsQueryOptions = <TData = Awaited<ReturnType<typeof getPredictionMLStats>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPredictionMLStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPredictionMLStatsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPredictionMLStats>>> = ({ signal }) => getPredictionMLStats({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPredictionMLStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPredictionMLStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getPredictionMLStats>>>
+export type GetPredictionMLStatsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get ML stats and Telegram configuration status
+ */
+
+export function useGetPredictionMLStats<TData = Awaited<ReturnType<typeof getPredictionMLStats>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPredictionMLStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPredictionMLStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCheckPredictionResultsUrl = () => {
+
+
+
+
+  return `/api/predictions/check-results`
+}
+
+/**
+ * @summary Auto-check match results via ESPN/AI and update predictions
+ */
+export const checkPredictionResults = async ( options?: RequestInit): Promise<CheckResultsResponse> => {
+
+  return customFetch<CheckResultsResponse>(getCheckPredictionResultsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getCheckPredictionResultsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkPredictionResults>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof checkPredictionResults>>, TError,void, TContext> => {
+
+const mutationKey = ['checkPredictionResults'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof checkPredictionResults>>, void> = () => {
+
+
+          return  checkPredictionResults(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CheckPredictionResultsMutationResult = NonNullable<Awaited<ReturnType<typeof checkPredictionResults>>>
+
+    export type CheckPredictionResultsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Auto-check match results via ESPN/AI and update predictions
+ */
+export const useCheckPredictionResults = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkPredictionResults>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof checkPredictionResults>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCheckPredictionResultsMutationOptions(options));
+    }
+
+export const getPublishPredictionToTelegramUrl = (id: number,) => {
+
+
+
+
+  return `/api/predictions/${id}/telegram`
+}
+
+/**
+ * @summary Publish a prediction to Telegram channel
+ */
+export const publishPredictionToTelegram = async (id: number, options?: RequestInit): Promise<TelegramPublishResult> => {
+
+  return customFetch<TelegramPublishResult>(getPublishPredictionToTelegramUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getPublishPredictionToTelegramMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishPredictionToTelegram>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishPredictionToTelegram>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['publishPredictionToTelegram'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishPredictionToTelegram>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  publishPredictionToTelegram(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishPredictionToTelegramMutationResult = NonNullable<Awaited<ReturnType<typeof publishPredictionToTelegram>>>
+
+    export type PublishPredictionToTelegramMutationError = ErrorType<void>
+
+    /**
+ * @summary Publish a prediction to Telegram channel
+ */
+export const usePublishPredictionToTelegram = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishPredictionToTelegram>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof publishPredictionToTelegram>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getPublishPredictionToTelegramMutationOptions(options));
+    }
+
+export const getUpdateTelegramPredictionResultUrl = (id: number,) => {
+
+
+
+
+  return `/api/predictions/${id}/telegram-result`
+}
+
+/**
+ * @summary Update Telegram message with match result
+ */
+export const updateTelegramPredictionResult = async (id: number,
+    predictionResultUpdate: PredictionResultUpdate, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getUpdateTelegramPredictionResultUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      predictionResultUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateTelegramPredictionResultMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTelegramPredictionResult>>, TError,{id: number;data: BodyType<PredictionResultUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTelegramPredictionResult>>, TError,{id: number;data: BodyType<PredictionResultUpdate>}, TContext> => {
+
+const mutationKey = ['updateTelegramPredictionResult'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTelegramPredictionResult>>, {id: number;data: BodyType<PredictionResultUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateTelegramPredictionResult(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTelegramPredictionResultMutationResult = NonNullable<Awaited<ReturnType<typeof updateTelegramPredictionResult>>>
+    export type UpdateTelegramPredictionResultMutationBody = BodyType<PredictionResultUpdate>
+    export type UpdateTelegramPredictionResultMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update Telegram message with match result
+ */
+export const useUpdateTelegramPredictionResult = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTelegramPredictionResult>>, TError,{id: number;data: BodyType<PredictionResultUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTelegramPredictionResult>>,
+        TError,
+        {id: number;data: BodyType<PredictionResultUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateTelegramPredictionResultMutationOptions(options));
     }
 
 export const getAnalyzeBookmakerImageUrl = () => {
