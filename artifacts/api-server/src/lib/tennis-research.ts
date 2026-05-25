@@ -236,7 +236,26 @@ async function tryWebSearchResearch(
 Проведи ПОЛНЫЙ ДОСЬЕ-АНАЛИЗ матча: ${player1} vs ${player2}.
 ${hints ? `Данные матча: ${hints}` : "Турнир/покрытие/дата не указаны — определи сам по последним новостям."}
 
-Используй web_search МНОГОКРАТНО для сбора ПОЛНОГО ДОСЬЕ по каждому игроку и матчу.
+╔══════════════════════════════════════════════════╗
+║  КРИТИЧЕСКОЕ ПРАВИЛО — НАРУШЕНИЕ НЕДОПУСТИМО:   ║
+║  ИСПОЛЬЗУЙ ТОЛЬКО ДАННЫЕ ИЗ WEB_SEARCH.         ║
+║  ЗАПРЕЩЕНО заполнять поля из памяти / обучения. ║
+║  Если не нашёл в интернете — пиши "НЕ НАЙДЕНО". ║
+║  Лучше "НЕ НАЙДЕНО" чем придуманная цифра.      ║
+╚══════════════════════════════════════════════════╝
+
+ОБЯЗАТЕЛЬНАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ WEB-ПОИСКОВ (выполни ВСЕ):
+1. "${player1} ${player2} match ${hintTournament ?? "2025 2026"}" — найди расписание/результат матча
+2. "${player1} injury news ${today.slice(0, 7)}" — свежие новости о травмах
+3. "${player2} injury fitness press conference ${today.slice(0, 7)}" — то же для второго
+4. "${player1} recent matches results ${today.slice(0, 7)}" — последние результаты
+5. "${player2} recent matches results ${today.slice(0, 7)}" — то же
+6. "${player1} ${player2} h2h head to head history" — история встреч
+7. "${player1} ${player2} ${hintTournament ?? "tennis"} odds betting" — коэффициенты
+8. "${player1} coach motivation interview ${today.slice(0, 4)}" — личный контекст
+9. "${player2} coach motivation interview ${today.slice(0, 4)}" — то же
+
+Используй web_search МНОГОКРАТНО — минимум 6-9 поисков перед заполнением JSON.
 
 ═══ БЛОК 1: МАТЧ ═══
 • Точное название турнира, дата, стадия, город, страна
@@ -317,7 +336,7 @@ ${JSON_SCHEMA(player1, player2)}`;
       model: "gpt-5.4",
       tools: [{ type: "web_search_preview" }],
       input,
-      max_output_tokens: 7000,
+      max_output_tokens: 10000,
     });
 
     const text: string =
@@ -578,9 +597,17 @@ export async function researchMatch(
 
 // ── Context builder ────────────────────────────────────────────────────────────
 
-export function buildResearchContext(research: MatchResearch): string {
+export function buildResearchContext(research: MatchResearch, dataSource: "web_search" | "ai_knowledge" = "ai_knowledge"): string {
   const p1 = research.player1;
   const p2 = research.player2;
+
+  const sourceLabel = dataSource === "web_search"
+    ? "🌐 ИСТОЧНИК: ЖИВОЙ ВЕБ-ПОИСК (данные актуальны на дату запроса)"
+    : "🧠 ИСТОЧНИК: БАЗА ЗНАНИЙ AI (данные до начала 2026 — могут быть устаревшими!)";
+
+  const sourceWarning = dataSource === "ai_knowledge"
+    ? "\n⚠️  ВНИМАНИЕ АГЕНТАМ: данные из базы знаний AI. Травмы, форма, расписание — могут быть устаревшими.\n    Поля с '—' или 'НЕ НАЙДЕНО' = данных нет, НЕ додумывать!"
+    : "\n✅ АГЕНТАМ: данные получены через живой поиск интернета. Поля 'НЕ НАЙДЕНО' = информация реально отсутствует в открытых источниках.";
 
   const fatigueLabel = (score: number) =>
     score <= 2 ? "🟢 свеж" : score <= 4 ? "🟡 умеренно устал" : score <= 6 ? "🟠 устал" : score <= 8 ? "🔴 сильно устал" : "🚨 критически измотан";
@@ -655,6 +682,8 @@ export function buildResearchContext(research: MatchResearch): string {
   Финансовая мотивация: ${p.financialMotivation}`;
 
   return `
+${sourceLabel}${sourceWarning}
+
 ╔══════════════════════════════════════════════════════╗
 ║         ПОЛНЫЙ ДОСЬЕ-БРИФИНГ ДЛЯ СОВЕЩАНИЯ          ║
 ╚══════════════════════════════════════════════════════╝
