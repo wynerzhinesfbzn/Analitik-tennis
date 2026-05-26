@@ -229,27 +229,29 @@ async function runCombinedAgents(
 
   const systemPrompt = `Ты — закрытое совещание трёх профессиональных теннисных аналитиков. Каждый анализирует матч со своей специализации. Говори как живой эксперт коллегам — конкретные цифры, живая речь, никаких шаблонных фраз.
 
-ВИКТОР — статистик и тактик (📊): рейтинг, форма, H2H, покрытие, матчап удар-vs-удар, конкретные вероятности победы в %.
-СЕРЖ — беттор-шарп (💹): где edge у букмекеров, конкретные ставки с KF и % банка, VALUE-расчёт, ответ на вопрос Виктора.
-МАРИНА — психолог и физиотерапевт (🧠): усталость→механика удара, психотип под давлением, личный контекст, вердикт по ставкам Сержа (✅⚠️🚫), кэшаут-триггер.
+ВИКТОР — статистик и тактик (📊): рейтинг, форма, H2H, покрытие, матчап, вероятности победы в %.
+СЕРЖ — беттор-шарп (💹): edge у букмекеров, конкретные ставки с KF и % банка.
+МАРИНА — психолог и физиотерапевт (🧠): усталость, психотип, личный контекст, вердикт по ставкам Сержа (✅⚠️🚫), кэшаут-триггер.
 
-СТРОГИЙ ФОРМАТ (теги обязательны, без отклонений):
+СТРОГИЙ ФОРМАТ (теги ОБЯЗАТЕЛЬНЫ, никаких отклонений):
 
 [ВИКТОР]
-...Виктор говорит 220-270 слов: статистика, тактический матчап, вероятности, острый вопрос Сержу...
+...Виктор говорит 120-150 слов: ключевая статистика, вероятности...
 [/ВИКТОР]
 
 [СЕРЖ]
-...Серж говорит 220-270 слов: коэффициенты, ставки, размеры банка, edge, ответ Виктору, вопрос Марине...
+...Серж говорит 120-150 слов: ставки с KF и % банка...
 [/СЕРЖ]
 
 [МАРИНА]
-...Марина говорит 220-270 слов: физика, психология, контекст, вердикт по ставкам Сержа (✅⚠️🚫), кэшаут при каком счёте...
+...Марина говорит 120-150 слов: физика, психология, вердикт по ставкам...
 [/МАРИНА]
 
 [СТАВКИ]
 [{"type":"outcome","description":"...","odds":1.85,"bankPercent":3,"confidencePercent":82},{"type":"total","description":"...","odds":1.90,"bankPercent":2,"confidencePercent":76},{"type":"handicap","description":"...","odds":1.75,"bankPercent":1,"confidencePercent":70}]
-[/СТАВКИ]`;
+[/СТАВКИ]
+
+ВАЖНО: секция [СТАВКИ] ОБЯЗАТЕЛЬНА — без неё ответ неполный. Всегда минимум 2 ставки.`;
 
   const userPrompt = `Матч: ${match.player1} vs ${match.player2}${match.tournament ? ` | ${match.tournament}` : ""}${match.surface ? ` | покрытие: ${match.surface}` : ""}${match.matchDate ? ` | дата: ${match.matchDate}` : ""}
 ML-коррекция истории ставок: ${mlContextText || "данных нет"}
@@ -258,7 +260,7 @@ ${researchContext}`;
 
   const stream = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    max_tokens: 2800,
+    max_tokens: 4096,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user",   content: userPrompt },
@@ -351,14 +353,17 @@ ${researchContext}`;
   }
   processBuffer();
 
+  // Parse [СТАВКИ] JSON — with progressively relaxed fallbacks
   let recommendations: BettingRecommendation[] = [];
-  if (betsJson) {
-    try {
-      recommendations = JSON.parse(betsJson) as BettingRecommendation[];
-    } catch {
-      const m = betsJson.match(/\[[\s\S]*\]/);
-      if (m) {
-        try { recommendations = JSON.parse(m[0]) as BettingRecommendation[]; } catch { /* ignore */ }
+  const jsonSources = [betsJson, accumulated].filter(Boolean);
+  outer: for (const src of jsonSources) {
+    // 1. Direct parse
+    try { recommendations = JSON.parse(src) as BettingRecommendation[]; if (recommendations.length) break outer; } catch { /* next */ }
+    // 2. Extract first [...] block
+    const m = src.match(/\[[\s\S]*?\]/g);
+    if (m) {
+      for (const candidate of m) {
+        try { const parsed = JSON.parse(candidate); if (Array.isArray(parsed) && parsed.length) { recommendations = parsed; break outer; } } catch { /* next */ }
       }
     }
   }
@@ -428,6 +433,7 @@ export async function runTennisAgents(
   const avg = recommendations.length > 0
     ? recommendations.reduce((s, r) => s + r.confidencePercent, 0) / recommendations.length : 0;
 
+  send({ type: "generating_recommendations" });
   send({ type: "recommendations", data: recommendations });
   send({ type: "vote", vote, avgConfidence: Math.round(avg) });
 
